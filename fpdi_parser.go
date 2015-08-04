@@ -27,33 +27,34 @@ import (
 	// "strings"
 	"regexp"
 	"strconv"
+	"bufio"
 )
 
 const (
 	defaultPdfVersion = 1.3
 )
 
-func openParser(filename string) (*parser, error) {
-	f, err := os.Open(filename)
+func openFileParser(filename string) (*PDFParser, error) {
+	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	p := new(parser)
-	p.f = f
-	p.context = context{}
+	reader := NewFileReader(file)
+	p := &PDFParser{reader}
+	
 	return p, nil
 }
 
-type parser struct {
-	f       *os.File
-	context context
+type PDFParser struct {
+	reader          *PDFReader
+	pageNumber      int
+	lastUsedPageBox string
 }
 
-func (p *parser) getPdfVersion() float64 {
-	p.f.Seek(0, 0)
-	b := make([]byte, 16)
-	if _, err := p.f.Read(b); err != nil {
+func (parser *PDFParser) getPdfVersion() float64 {
+	b, err := parser.reader.Peek(16)
+	if err != nil {
 		return defaultPdfVersion
 	}
 
@@ -69,9 +70,59 @@ func (p *parser) getPdfVersion() float64 {
 	return version
 }
 
-func (p *parser) setPageNumber(pageNumber int) {
-
+func (parser *PDFParser) setPageNumber(pageNumber int) {
+	parser.pageNumber = pageNumber
 }
 
-type context struct {
+
+
+type PageBoxes struct {
+	pageBoxes       map[string]*PageBox
+	lastUsedPageBox string
+}
+
+func (boxes PageBoxes) get(boxName string) *PageBox {
+    /**
+     * MediaBox
+     * CropBox: Default -> MediaBox
+     * BleedBox: Default -> CropBox
+     * TrimBox: Default -> CropBox
+     * ArtBox: Default -> CropBox
+     */
+    if pageBox, ok := boxes.pageBoxes[boxName]; ok {
+    	boxes.lastUsedPageBox = boxName
+    	return pageBox
+    }
+    switch pageBox {
+    case BleedBox:
+    case TrimBox:
+    case ArtBox:
+    	return boxes.get(CropBox)
+    case CropBox:
+    	return boxes.get(MediaBox)
+    default:
+    	return nil
+    }
+}
+
+type PageBox struct {
+	PointType
+	SizeType
+	Lower PointType // llx, lly
+	Upper PointType // urx, ury
+}
+
+func (parser *PDFParser) getPageBoxes(pageNumber int, k float64) PageBoxes {
+	page = parser.pages[pageNumber]
+	boxes := make(map[string]*PageBox, 5)
+	boxes[MediaBox] = parser.getPageBox(MediaBox, k)
+	boxes[CropBox] = parser.getPageBox(CropBox, k)
+	boxes[BleedBox] = parser.getPageBox(BleedBox, k)
+	boxes[TrimBox] = parser.getPageBox(TrimBox, k)
+	boxes[ArtBox] = parser.getPageBox(ArtBox, k)
+	return PageBoxes{boxes,""}
+}
+
+func (parser *PDFParser) getPageBox(page dictionary, boxIndex string, k float64) {
+
 }

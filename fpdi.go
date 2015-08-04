@@ -1,11 +1,11 @@
 package gofpdf
 
 //
-//  GoFPDI
+//  GoTemplateDocument
 //
 //    Copyright 2015 Marcus Downing
 //
-//  FPDI - Version 1.5.2
+//  TemplateDocument - Version 1.5.2
 //
 //    Copyright 2004-2014 Setasign - Jan Slabon
 //
@@ -49,53 +49,57 @@ const (
 )
 
 // OpenFile opens an existing PDF file for reading
-func OpenFile(filename string) (*Fpdi, error) {
+func OpenFile(filename string) (*TemplateDocument, error) {
 	parser, err := openParser(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	fpdi := new(Fpdi)
-	fpdi.parser = parser
+	td := new(TemplateDocument)
+	td.parser = parser
+	td.pdfVersion = td.parser.getPdfVersion()
 
-	version := math.Max(1.3, fpdi.parser.getPdfVersion())
-	fpdi.pdfVersion = fmt.Sprintf("%.1f", version)
+	// ???
 
-	return fpdi, nil
+	return td, nil
 }
 
-// Fpdi represents a PDF file parser that can be used to load templates to use in other documents
-type Fpdi struct {
-	numPages        int    // the number of pages in the PDF cocument
-	lastUsedPageBox string // the most recently used value of boxName
-	parser          *parser
+// TemplateDocument represents a PDF file parser that can be used to load templates to use in other documents
+type TemplateDocument struct {
+	numPages        int     // the number of pages in the PDF cocument
+	lastUsedPageBox string  // the most recently used value of boxName
+	parser          *parser // the actual document reader
 	pdfVersion      string
 }
 
 // CountPages returns the number of pages in this source document
-func (i *Fpdi) CountPages() int {
-	return i.numPages
+func (td *TemplateDocument) CountPages() int {
+	return td.numPages
 }
 
 // ImportPage imports a single page of the source document to use as a template in another document
-func (i *Fpdi) ImportPage(pageNumber int, boxName string, groupXObject bool) Template {
+func (td *TemplateDocument) ImportPage(pageNumber int, boxName string, groupXObject bool) Template {
 	if boxName == "" {
 		boxName = DefaultBox
 	}
-	i.parser.setPageNumber(pageNumber)
+	td.parser.setPageNumber(pageNumber)
 
-	t := new(fpdiTemplate)
+	t := new(TemplateDocumentTemplate)
 	t.id = GenerateTemplateID()
-	// t.pageSize =
+
+	pageBoxes := td.parser.getPageBoxes(pageNumber, td.scaleFactor)
+	pageBox := pageBoxes.get(boxName)
+	td.lastUsedPageBox = pageBoxes.lastUsedPageBox
+
 	return t
 }
 
 // GetLastUsedPageBox returns the last used page boundary box.
-func (i *Fpdi) GetLastUsedPageBox() string {
-	return i.lastUsedPageBox
+func (td *TemplateDocument) GetLastUsedPageBox() string {
+	return td.lastUsedPageBox
 }
 
 // Close releases references and closes the file handler of the parser
-func (i *Fpdi) Close() {
+func (td *TemplateDocument) Close() {
 
 }
