@@ -1,37 +1,32 @@
 package gofpdf
 
-//
-//  GoFPDI
-//
-//    Copyright 2015 Marcus Downing
-//
-//  FPDI - Version 1.5.2
-//
-//    Copyright 2004-2014 Setasign - Jan Slabon
-//
-//  Licensed under the Apache License, Version 2.0 (the "License");
-//  you may not use this file except in compliance with the License.
-//  You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-//  Unless required by applicable law or agreed to in writing, software
-//  distributed under the License is distributed on an "AS IS" BASIS,
-//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//  See the License for the specific language governing permissions and
-//  limitations under the License.
-//
+/*
+ * Copyright (c) 2015 Kurt Jung (Gmail: kurt.w.jung),
+ *   Marcus Downing, Jan Slabon (Setasign)
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
 
 import (
 	"os"
 	// "strings"
 	"regexp"
-	"strconv"
-	"bufio"
+	// "strconv"
+	// "bufio"
 )
 
 const (
-	defaultPdfVersion = 1.3
+	defaultPdfVersion = "1.3"
 )
 
 func openFileParser(filename string) (*PDFParser, error) {
@@ -46,13 +41,16 @@ func openFileParser(filename string) (*PDFParser, error) {
 	return p, nil
 }
 
+// PDFParser is a high-level parser for PDF elements
+// See fpdf_pdf_parser.php
 type PDFParser struct {
 	reader          *PDFReader
 	pageNumber      int
 	lastUsedPageBox string
+	pages []PDFPage
 }
 
-func (parser *PDFParser) getPdfVersion() float64 {
+func (parser *PDFParser) getPdfVersion() string {
 	b, err := parser.reader.Peek(16)
 	if err != nil {
 		return defaultPdfVersion
@@ -63,24 +61,27 @@ func (parser *PDFParser) getPdfVersion() float64 {
 	if match == nil {
 		return defaultPdfVersion
 	}
-	version, err := strconv.ParseFloat(string(match[:]), 64)
-	if err != nil {
-		return defaultPdfVersion
-	}
-	return version
+	return match
 }
 
 func (parser *PDFParser) setPageNumber(pageNumber int) {
 	parser.pageNumber = pageNumber
 }
 
+type PDFPage struct {
+	
+}
 
 
+
+// PageBoxes is a transient collection of the page boxes used in a document
+// The keys are the constants: MediaBox, CrobBox, BleedBox, TrimBox, ArtBox
 type PageBoxes struct {
 	pageBoxes       map[string]*PageBox
 	lastUsedPageBox string
 }
 
+// select a 
 func (boxes PageBoxes) get(boxName string) *PageBox {
     /**
      * MediaBox
@@ -105,6 +106,7 @@ func (boxes PageBoxes) get(boxName string) *PageBox {
     }
 }
 
+// PageBox is the bounding box for a page
 type PageBox struct {
 	PointType
 	SizeType
@@ -112,17 +114,66 @@ type PageBox struct {
 	Upper PointType // urx, ury
 }
 
+// getPageBoxes gets the all the bounding boxes for a given page
+//
+// k is a scaling factor from user space units to points
 func (parser *PDFParser) getPageBoxes(pageNumber int, k float64) PageBoxes {
 	page = parser.pages[pageNumber]
 	boxes := make(map[string]*PageBox, 5)
-	boxes[MediaBox] = parser.getPageBox(MediaBox, k)
-	boxes[CropBox] = parser.getPageBox(CropBox, k)
-	boxes[BleedBox] = parser.getPageBox(BleedBox, k)
-	boxes[TrimBox] = parser.getPageBox(TrimBox, k)
-	boxes[ArtBox] = parser.getPageBox(ArtBox, k)
+	if box := parser.getPageBox(page, MediaBox, k); box != nil {
+		boxes[MediaBox] = box
+	}
+	if box := parser.getPageBox(page, CropBox, k); box != nil {
+		boxes[CropBox] = box
+	}
+	if box := parser.getPageBox(page, BleedBox, k); box != nil {
+		boxes[BleedBox] = box
+	}
+	if box := parser.getPageBox(page, TrimBox, k); box != nil {
+		boxes[TrimBox] = box
+	}
+	if box := parser.getPageBox(page, ArtBox, k); box != nil {
+		boxes[ArtBox] = box
+	}
 	return PageBoxes{boxes,""}
 }
 
-func (parser *PDFParser) getPageBox(page dictionary, boxIndex string, k float64) {
+// getPageBox reads a bounding box from a page.
+//
+// page is a /Page dictionary.
+//
+// k is a scaling factor from user space units to points.
+func (parser *PDFParser) getPageBox(page dictionary, boxIndex string, k float64) *PageBox {
+	// page = parser.resolveObject(page);
 
+	/*
+        $page = $this->resolveObject($page);
+        $box = null;
+        if (isset($page[1][1][$boxIndex])) {
+            $box = $page[1][1][$boxIndex];
+        }
+        
+        if (!is_null($box) && $box[0] == pdf_parser::TYPE_OBJREF) {
+            $tmp_box = $this->resolveObject($box);
+            $box = $tmp_box[1];
+        }
+            
+        if (!is_null($box) && $box[0] == pdf_parser::TYPE_ARRAY) {
+            $b = $box[1];
+            return array(
+                'x' => $b[0][1] / $k,
+                'y' => $b[1][1] / $k,
+                'w' => abs($b[0][1] - $b[2][1]) / $k,
+                'h' => abs($b[1][1] - $b[3][1]) / $k,
+                'llx' => min($b[0][1], $b[2][1]) / $k,
+                'lly' => min($b[1][1], $b[3][1]) / $k,
+                'urx' => max($b[0][1], $b[2][1]) / $k,
+                'ury' => max($b[1][1], $b[3][1]) / $k,
+            );
+        } else if (!isset($page[1][1]['/Parent'])) {
+            return false;
+        } else {
+            return $this->_getPageBox($this->resolveObject($page[1][1]['/Parent']), $boxIndex, $k);
+        }
+    */
 }
