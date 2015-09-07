@@ -34,7 +34,7 @@ func Open(filename string) (*Fpdi, error) {
 
 	td := new(Fpdi)
 	td.parser = parser
-	td.pdfVersion = td.parser.pdfVersion
+	td.pdfVersion = td.parser.reader.pdfVersion
 
 	// td.k = ???
 	// ???
@@ -71,7 +71,7 @@ func (td *Fpdi) ImportPage(pageNumber int, boxName string, groupXObject bool) go
 	t := new(TemplatePage)
 	t.id = gofpdf.GenerateTemplateID()
 
-	pageBoxes := td.parser.getPageBoxes(pageNumber, td.k)
+	pageBoxes := td.parser.GetPageBoxes(pageNumber, td.k)
 	_ /*pageBox*/ = pageBoxes.get(boxName)
 	td.lastUsedPageBox = pageBoxes.lastUsedPageBox
 
@@ -83,7 +83,7 @@ func (td *Fpdi) GetLastUsedPageBox() string {
 	return td.lastUsedPageBox
 }
 
-// Close releases references and closes the file handler of the parser
+// Close releases references and closes the file handle of the parser
 func (td *Fpdi) Close() {
-	// td.parser.Close()
+	td.parser.Close()
 }
