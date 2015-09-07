@@ -4,6 +4,6 @@ import (
 	"github.com/jung-kurt/gofpdf"
 )
 
-func ReadFile() {
+func Open(filename string) {
 	
 }
