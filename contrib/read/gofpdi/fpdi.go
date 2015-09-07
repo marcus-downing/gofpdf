@@ -25,14 +25,14 @@ import (
 )
 
 // Open makes an existing PDF file usable for templates
-func Open(filename string) (*TemplateDocument, error) {
+func Open(filename string) (*Fpdi, error) {
 	fmt.Println("Opening file:", filename)
 	parser, err := OpenPDFParser(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	td := new(TemplateDocument)
+	td := new(Fpdi)
 	td.parser = parser
 	td.pdfVersion = td.parser.pdfVersion
 
@@ -42,8 +42,8 @@ func Open(filename string) (*TemplateDocument, error) {
 	return td, nil
 }
 
-// TemplateDocument represents a PDF file parser that can be used to load templates to use in other documents
-type TemplateDocument struct {
+// Fpdi represents a PDF file parser which can load templates to use in other documents
+type Fpdi struct {
 	numPages        int        // the number of pages in the PDF cocument
 	lastUsedPageBox string     // the most recently used value of boxName
 	parser          *PDFParser // the actual document reader
@@ -52,17 +52,17 @@ type TemplateDocument struct {
 }
 
 // CountPages returns the number of pages in this source document
-func (td *TemplateDocument) CountPages() int {
+func (td *Fpdi) CountPages() int {
 	return td.numPages
 }
 
 // Page imports a single page of the source document using default settings
-func (td *TemplateDocument) Page(pageNumber int) gofpdf.Template {
+func (td *Fpdi) Page(pageNumber int) gofpdf.Template {
 	return td.ImportPage(pageNumber, DefaultBox, false)
 }
 
 // ImportPage imports a single page of the source document to use as a template in another document
-func (td *TemplateDocument) ImportPage(pageNumber int, boxName string, groupXObject bool) gofpdf.Template {
+func (td *Fpdi) ImportPage(pageNumber int, boxName string, groupXObject bool) gofpdf.Template {
 	if boxName == "" {
 		boxName = DefaultBox
 	}
@@ -79,11 +79,11 @@ func (td *TemplateDocument) ImportPage(pageNumber int, boxName string, groupXObj
 }
 
 // GetLastUsedPageBox returns the last used page boundary box.
-func (td *TemplateDocument) GetLastUsedPageBox() string {
+func (td *Fpdi) GetLastUsedPageBox() string {
 	return td.lastUsedPageBox
 }
 
 // Close releases references and closes the file handler of the parser
-func (td *TemplateDocument) Close() {
+func (td *Fpdi) Close() {
 	// td.parser.Close()
 }

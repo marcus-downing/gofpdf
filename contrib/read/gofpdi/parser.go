@@ -133,9 +133,12 @@ type PageBox struct {
 // pageNumber is 1-indexed
 // k is a scaling factor from user space units to points
 func (parser *PDFParser) getPageBoxes(pageNumber int, k float64) PageBoxes {
-	if pageNumber >= num
-	page := parser.pages[pageNumber]
 	boxes := make(map[string]*PageBox, 5)
+	if pageNumber >= len(parser.pages) {
+		return PageBoxes{boxes, DefaultBox}
+	}
+
+	page := parser.pages[pageNumber]
 	if box := parser.getPageBox(page, MediaBox, k); box != nil {
 		boxes[MediaBox] = box
 	}
@@ -151,7 +154,7 @@ func (parser *PDFParser) getPageBoxes(pageNumber int, k float64) PageBoxes {
 	if box := parser.getPageBox(page, ArtBox, k); box != nil {
 		boxes[ArtBox] = box
 	}
-	return PageBoxes{boxes, ""}
+	return PageBoxes{boxes, DefaultBox}
 }
 
 // getPageBox reads a bounding box from a page.
