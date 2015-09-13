@@ -28,7 +28,8 @@ const (
 )
 
 // Value is one of: ...
-type Value interface{}
+type Value interface {
+}
 
 // Dictionary is a mapping from names to values
 type Dictionary map[string]Value

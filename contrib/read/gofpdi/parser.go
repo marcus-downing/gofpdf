@@ -20,10 +20,12 @@ package gofpdi
 import (
 	"fmt"
 	// "os"
-	// "strings"
+	"strings"
 	// "regexp"
-	// "strconv"
+	// "bytes"
+	"strconv"
 	// "bufio"
+	"errors"
 	// "github.com/jung-kurt/gofpdf"
 )
 
@@ -33,6 +35,7 @@ const (
 
 // OpenPDFParser opens an existing PDF file and readies it
 func OpenPDFParser(filename string) (*PDFParser, error) {
+	// fmt.Println("Opening PDF file:", filename)
 	reader, err := NewTokenReader(filename)
 	if err != nil {
 		return nil, err
@@ -44,11 +47,18 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 	parser.lastUsedPageBox = DefaultBox
 
 	// read xref data
-	xrefOffset, err := reader.findXrefTable()
+	// xrefOffset, err := reader.findXrefTable()
+	// if err != nil {
+	// 	return nil, err
+	// }
+	offset, err := parser.reader.findXrefTable()
 	if err != nil {
 		return nil, err
 	}
-	parser.readXrefTable(xrefOffset)
+	err = parser.readXrefTable(offset)
+	if err != nil {
+		return nil, err
+	}
 
 	// check for encryption
 	// ...
@@ -66,6 +76,12 @@ type PDFParser struct {
 	pageNumber      int             // the current page number
 	lastUsedPageBox string          // the most recently used page box
 	pages           []PDFPage       // already loaded pages
+
+	xref struct {
+		maxObject    int                 // the highest xref object number
+		xrefLocation int64               // the location of the xref table
+		xref         map[int]map[int]int // all the xref offsets
+	}
 }
 
 func (parser *PDFParser) setPageNumber(pageNumber int) {
@@ -83,7 +99,7 @@ type PDFPage struct {
 	Number int
 }
 
-// getPageBoxes gets the all the bounding boxes for a given page
+// GetPageBoxes gets the all the bounding boxes for a given page
 //
 // pageNumber is 1-indexed
 // k is a scaling factor from user space units to points
@@ -156,16 +172,96 @@ func (parser *PDFParser) getPageBox(page PDFPage, boxIndex string, k float64) *P
 	return nil
 }
 
-func (parser *PDFParser) readXrefTable(offset int64) {
-	if err := parser.reader.Seek(offset, 0); err != nil {
-		fmt.Println("Error reading xref table:", err)
-	}
-	// parser.reader.clean()
+func (parser *PDFParser) checkXrefTableOffset(offset int64) (int64, error) {
+	// if the file is corrupt, it may not line up correctly
+	// token := parser.reader.ReadToken()
+	// if !bytes.Equal(token, Token("xref")) {
+	// 	// bad PDF file! no cookie for you
+	// 	// look to see if we can find the xref table nearby
+	// 	fmt.Println("Corrupt PDF. Scanning for xref table")
+	// 	parser.reader.Seek(-20, 1)
+	// 	parser.reader.SkipToToken(Token("xref"))
+	// 	token = parser.reader.ReadToken()
+	// 	if !bytes.Equal(token, Token("xref")) {
+	// 		return errors.New("Corrupt PDF: Could not find xref table")
+	// 	}
+	// }
 
-	token := parser.reader.ReadToken()
-	fmt.Println("Reading xref table:", token)
-	if token != "xref" {
-		// bad file! no cookie for you
-		fmt.Println("Corrupt file")
+	return offset, nil
+}
+
+func (parser *PDFParser) readXrefTable(offset int64) error {
+	// fmt.Println("Reading xref table at", offset)
+
+	// offset, err := parser.reader.checkXrefTable(offset)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// first read in the Xref table data and the trailer dictionary
+	if _, err := parser.reader.Seek(offset, 0); err != nil {
+		return err
 	}
+	lines, err := parser.reader.ReadLinesToToken(Token("trailer"))
+	if err != nil {
+		fmt.Println("Error reading to end of xref table")
+		return err
+	}
+
+	// trailer, err := parser.ReadValue().AsDictionary()
+
+	// read the lines, store the xref table data
+	start := 1
+	if parser.xref.xrefLocation == 0 {
+		parser.xref.maxObject = 0
+		parser.xref.xrefLocation = offset
+		parser.xref.xref = make(map[int]map[int]int, len(lines))
+	}
+	for _, lineBytes := range lines {
+		// fmt.Println("Xref table line:", lineBytes)
+		line := strings.TrimSpace(string(lineBytes))
+		// fmt.Println("Reading xref table line:", line)
+		if line != "" {
+			if line == "xref" {
+				continue
+			}
+			pieces := strings.Split(line, " ")
+			switch len(pieces) {
+			case 0:
+				continue
+			case 2:
+				start, _ = strconv.Atoi(pieces[0])
+				end, _ := strconv.Atoi(pieces[1])
+				if end > parser.xref.maxObject {
+					parser.xref.maxObject = end
+				}
+			case 3:
+				if _, ok := parser.xref.xref[start]; !ok {
+					parser.xref.xref[start] = make(map[int]int, len(lines))
+				}
+				xr, _ := strconv.Atoi(pieces[0])
+				gen, _ := strconv.Atoi(pieces[1])
+
+				if _, ok := parser.xref.xref[start][gen]; !ok {
+					if pieces[2] == "n" {
+						parser.xref.xref[start][gen] = xr
+					} else {
+						// xref[start][gen] = nil // ???
+					}
+				}
+				start++
+			default:
+				return errors.New("Unexpected data in xref table: '" + line + "'")
+			}
+		}
+	}
+
+	// process the trailer
+	// if parser.xref.trailer == nil {
+	// 	parser.xref.trailer = trailer
+	// }
+
+	// fmt.Println("Xref table:", fmt.Sprintf("%v", parser.xref))
+
+	return nil
 }

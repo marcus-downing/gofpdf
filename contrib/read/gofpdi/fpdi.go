@@ -18,7 +18,7 @@ package gofpdi
  */
 
 import (
-	"fmt"
+	// "fmt"
 	// "math"
 	// "strconv"
 	"github.com/jung-kurt/gofpdf"
@@ -26,7 +26,6 @@ import (
 
 // Open makes an existing PDF file usable for templates
 func Open(filename string) (*Fpdi, error) {
-	fmt.Println("Opening file:", filename)
 	parser, err := OpenPDFParser(filename)
 	if err != nil {
 		return nil, err
