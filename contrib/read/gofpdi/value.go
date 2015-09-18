@@ -219,8 +219,8 @@ func (r ObjectRef) Equals(v Value) bool {
 
 // ObjectDeclaration is a object identifier
 type ObjectDeclaration struct {
-	Obj int
-	Gen int
+	Obj    int
+	Gen    int
 	Values []Value
 }
 

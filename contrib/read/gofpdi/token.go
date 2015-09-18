@@ -224,7 +224,7 @@ func splitBytes(data []byte, atEOF bool) (advance int, token []byte, err error) 
 	return 1, data[0:1], nil
 }
 
-// splitPeekTokens returns 
+// splitPeekTokens returns
 func splitPeekTokens(n int, into *[]Token) func([]byte, bool) (advance int, token []byte, err error) {
 	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF && len(data) == 0 {

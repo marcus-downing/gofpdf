@@ -374,23 +374,23 @@ func (parser *PDFParser) readValue() Value {
 		return Real(real)
 	}
 	if number, err := strconv.Atoi(str); err != nil {
-        // A numeric token. Make sure that
-        // it is not part of something else.
+		// A numeric token. Make sure that
+		// it is not part of something else.
 		if moreTokens := parser.reader.PeekTokens(2); len(moreTokens) == 2 {
 			if number2, err := strconv.Atoi(string(moreTokens[0])); err != nil {
-                // Two numeric tokens in a row.
-                // In this case, we're probably in
-                // front of either an object reference
-                // or an object specification.
-                // Determine the case and return the data
-                switch string(moreTokens[1]) {
-                case "obj":
-                	parser.reader.ReadTokens(2)
-                	return ObjectDeclaration{number, number2}
-                case "R":
-                	parser.reader.ReadTokens(2)
-                	return ObjectRef{number, number2}
-                }
+				// Two numeric tokens in a row.
+				// In this case, we're probably in
+				// front of either an object reference
+				// or an object specification.
+				// Determine the case and return the data
+				switch string(moreTokens[1]) {
+				case "obj":
+					parser.reader.ReadTokens(2)
+					return ObjectDeclaration{number, number2}
+				case "R":
+					parser.reader.ReadTokens(2)
+					return ObjectRef{number, number2}
+				}
 			}
 		}
 
@@ -410,55 +410,55 @@ func (parser *PDFParser) readValue() Value {
 }
 
 func (parser *PDFParser) resolveObject(spec Value) Dictionary {
-    // Exit if we get invalid data
+	// Exit if we get invalid data
 	if spec == nil {
 		return nil
 	}
 
 	if objRef, ok := spec.(ObjectRef); ok {
-        // This is a reference, resolve it
-        if offset, ok := parser.xref.xref[objRef]; ok {
-        	parser.reader.Seek(offset, 0)
-        	header := parser.readValue()
-        	if header != objRef {
-        		toSearchFor := Token(fmt.Sprintf("%d %d obj", objRef.Obj, objRef.Gen))
-        		if parser.reader.SkipToToken(toSearchFor) {
-	        		parser.reader.SkipBytes(len(toSearchFor))
-    			} else {
-    				// Unable to find object
-    				return nil
-    			}
-        	}
+		// This is a reference, resolve it
+		if offset, ok := parser.xref.xref[objRef]; ok {
+			parser.reader.Seek(offset, 0)
+			header := parser.readValue()
+			if header != objRef {
+				toSearchFor := Token(fmt.Sprintf("%d %d obj", objRef.Obj, objRef.Gen))
+				if parser.reader.SkipToToken(toSearchFor) {
+					parser.reader.SkipBytes(len(toSearchFor))
+				} else {
+					// Unable to find object
+					return nil
+				}
+			}
 
-            // If we're being asked to store all the information
-            // about the object, we add the object ID and generation
-            // number for later use
-        	result := ObjectDeclaration{header.Obj, header.Gen, make([]Value, 0, 2)}
-        	parser.currentObject = result
+			// If we're being asked to store all the information
+			// about the object, we add the object ID and generation
+			// number for later use
+			result := ObjectDeclaration{header.Obj, header.Gen, make([]Value, 0, 2)}
+			parser.currentObject = result
 
-            // Now simply read the object data until
-            // we encounter an end-of-object marker
-        	for {
-        		value := parser.readValue()
-        		if value == nil || len(result.Values) > 1 { // ???
-                    // in this case the parser couldn't find an "endobj" so we break here
-        			break
-        		}
+			// Now simply read the object data until
+			// we encounter an end-of-object marker
+			for {
+				value := parser.readValue()
+				if value == nil || len(result.Values) > 1 { // ???
+					// in this case the parser couldn't find an "endobj" so we break here
+					break
+				}
 
-        		if value.Equals(Token("endobj")) {
-        			break
-        		}
+				if value.Equals(Token("endobj")) {
+					break
+				}
 
-        		result.Values = append(result.Values, value)
-        	}
+				result.Values = append(result.Values, value)
+			}
 
-        	// Reset to the start 
-        	// parser.reader.Seek(???)
+			// Reset to the start
+			// parser.reader.Seek(???)
 
-        } else {
-        	// Unable to find object
-        	return nil
-        }
+		} else {
+			// Unable to find object
+			return nil
+		}
 	}
 
 	if obj, ok := spec.(Dictionary); ok {
