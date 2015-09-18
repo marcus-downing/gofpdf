@@ -29,39 +29,9 @@ import (
 )
 
 const (
-	typeNull       = 0  // Null
-	typeNumeric    = 1  // Numeric
-	typeToken      = 2  // Token
-	typeHex        = 3  // Hex value
-	typeString     = 4  // String value
-	typeDictionary = 5  // Dictionary
-	typeArray      = 6  // Array
-	typeObjDec     = 7  // Object declaration
-	typeObjRef     = 8  // Object reference
-	typeObject     = 9  // Object
-	typeStream     = 10 // Stream
-	typeBoolean    = 11 // Boolean
-	typeReal       = 12 // Real number
-)
-
-const (
 	startxref                = "startxref"
 	searchForStartxrefLength = 1024 // 5500 // distance from the end of the file to search for the startxref offset
 )
-
-// Token is a unit of PDF syntax.
-// Not all tokens can be safely represented as strings.
-type Token []byte
-
-// String converts a token to a string
-func (t Token) String() string {
-	return string(t)
-}
-
-// ToRegex creates a regular expression to match the token
-func (t Token) ToRegex() string {
-	return regexp.QuoteMeta(string(t))
-}
 
 // PDFTokenReader is a low-level reader for the tokens in a PDF file
 // See pdf_parser.php and pdf_context.php
@@ -109,12 +79,24 @@ func (reader *PDFTokenReader) splitPeek(n int, into *[]byte) {
 	reader.scanner.Split(splitPeek(n, into))
 }
 
+func (reader *PDFTokenReader) splitNext(n int) {
+	reader.scanner.Split(splitNext(n))
+}
+
 func (reader *PDFTokenReader) splitUntil(token Token) {
 	reader.scanner.Split(splitUntil(token))
 }
 
+func (reader *PDFTokenReader) splitPeekTokens(n int, into *[]Token) {
+	reader.scanner.Split(splitPeekTokens(n, into))
+}
+
 func (reader *PDFTokenReader) splitOnTokens() {
 	reader.scanner.Split(splitTokens)
+}
+
+func (reader *PDFTokenReader) splitOnBytes() {
+	reader.scanner.Split(splitBytes)
 }
 
 // calibrateLineEndings uses some sample data to determine which line-ending is used by this file
@@ -155,6 +137,7 @@ func splitLines(lineEnding []byte) func([]byte, bool) (advance int, token []byte
 	}
 }
 
+// splitPeek reads up to a fixed number of bytes, but does not progress the buffer
 func splitPeek(n int, into *[]byte) func([]byte, bool) (advance int, token []byte, err error) {
 	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF && len(data) == 0 {
@@ -175,6 +158,27 @@ func splitPeek(n int, into *[]byte) func([]byte, bool) (advance int, token []byt
 		copy(result, data)
 		*into = result
 		return 0, nil, io.EOF
+	}
+}
+
+// splitNext reads up to a fixed number of bytes.
+func splitNext(n int) func([]byte, bool) (advance int, token []byte, err error) {
+	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, io.EOF
+		}
+
+		// make sure we have enough loaded
+		if len(data) < n && !atEOF {
+			// request more data
+			return 0, nil, nil
+		}
+
+		// return as much as we can
+		if n > len(data) {
+			n = len(data)
+		}
+		return n, data[0:n], io.EOF
 	}
 }
 
@@ -212,7 +216,51 @@ func splitUntil(token Token) func([]byte, bool) (advance int, token []byte, err 
 	}
 }
 
-// tokeniser function for PDF syntax
+// splitBytes returns every single byte
+func splitBytes(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, io.EOF
+	}
+	return 1, data[0:1], nil
+}
+
+// splitPeekTokens returns 
+func splitPeekTokens(n int, into *[]Token) func([]byte, bool) (advance int, token []byte, err error) {
+	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, io.EOF
+		}
+
+		// split tokens until we have the right number or run out of data
+		result := make([]Token, 0, n)
+		for len(result) < n {
+			padvance, ptoken, perr := splitTokens(data, atEOF)
+			if padvance == 0 && ptoken == nil && perr == nil {
+				// request more data
+				return 0, nil, nil
+			}
+
+			if ptoken != nil {
+				result = append(result, ptoken)
+			}
+
+			data = data[padvance:]
+			if atEOF && len(data) == 0 {
+				return 0, nil, io.EOF
+			}
+
+			if perr == io.EOF {
+				// stop reading
+				break
+			}
+		}
+		*into = result
+
+		return 0, nil, io.EOF
+	}
+}
+
+// splitTokens returns one token at a time
 func splitTokens(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	// see pdf_parser::_readToken in pdf_parser.php:726
 
@@ -229,9 +277,8 @@ func splitTokens(data []byte, atEOF bool) (advance int, token []byte, err error)
 	if offset >= len(data) {
 		if atEOF {
 			return offset, nil, io.EOF
-		} else {
-			return offset, nil, nil
 		}
+		return offset, nil, nil
 	}
 	// os.Stderr.WriteString(fmt.Sprintf("Data length: %d bytes, offset: %d, data: %v\n", len(data), offset, data[0:6]))
 
@@ -372,13 +419,28 @@ func (reader *PDFTokenReader) Seek(offset int64, whence int) (int64, error) {
 }
 
 // Peek looks ahead to get data but doesn't move the file pointer at all
-func (reader *PDFTokenReader) Peek(n int) ([]byte, error) {
+func (reader *PDFTokenReader) Peek(n int) []byte {
 	var peek []byte
 	reader.splitPeek(n, &peek)
-	if !reader.scanner.Scan() {
-		return peek, reader.scanner.Err()
+	reader.scanner.Scan()
+	return peek
+}
+
+// PeekTokens looks ahead to get tokens but doesn't move the file pointer at all
+func (reader *PDFTokenReader) PeekTokens(n int) []Token {
+	var peek []Token
+	reader.splitPeekTokens(n, &peek)
+	reader.scanner.Scan()
+	return peek
+}
+
+// ReadByte gets a single byte
+func (reader *PDFTokenReader) ReadByte() (byte, bool) {
+	reader.splitOnBytes()
+	if reader.scanner.Scan() {
+		return reader.scanner.Bytes()[0], true
 	}
-	return peek, nil
+	return 0, false
 }
 
 // ReadToken gets the next PDF token
@@ -400,58 +462,76 @@ func (reader *PDFTokenReader) ReadLine() []byte {
 	return []byte{}
 }
 
-// SkipToToken seeks ahead to the first instance of the given token
-func (reader *PDFTokenReader) SkipToToken(token Token) error {
-	reader.splitUntil(token)
-	if !reader.scanner.Scan() {
-		return reader.scanner.Err()
-	}
-	return nil
+func (reader *PDFTokenReader) SkipBytes(n int) bool {
+	reader.splitNext(n)
+	return reader.scanner.Scan()
 }
 
-// ReadToToken reads all tokens from the current position until the next instance of the given token
-// If the token cannot be found, returns nil
-func (reader *PDFTokenReader) ReadTokensToToken(token Token) ([]Token, error) {
-	data, err := reader.ReadBytesToToken(token)
-	if err != nil {
-		return nil, err
+// SkipToToken seeks ahead to the first instance of the given token
+func (reader *PDFTokenReader) SkipToToken(token Token) bool {
+	reader.splitUntil(token)
+	if !reader.scanner.Scan() {
+		return false
 	}
-	return reader.SplitTokens(data), nil
+	return true
+}
+
+// ReadTokens reads a fixed number of tokens
+func (reader *PDFTokenReader) ReadTokens(n int) []Token {
+	reader.splitOnTokens()
+	result := make([]Token, 0, n)
+	for len(result) < n && reader.scanner.Scan() {
+		result = append(result, Token(reader.scanner.Bytes()))
+	}
+	return result
+}
+
+// ReadTokensToToken reads all tokens from the current position until the next instance of the given token
+// If the token cannot be found, returns nil
+func (reader *PDFTokenReader) ReadTokensToToken(token Token) ([]Token, bool) {
+	data, ok := reader.ReadBytesToToken(token)
+	return reader.SplitTokens(data), ok
 }
 
 // ReadLinesToToken reads all lines from the current position until the next instance of the given token
 // If the token cannot be found, returns nil
-func (reader *PDFTokenReader) ReadLinesToToken(token Token) ([][]byte, error) {
-	data, err := reader.ReadBytesToToken(token)
-	if err != nil {
-		return nil, err
-	}
-	return reader.SplitLines(data), nil
+func (reader *PDFTokenReader) ReadLinesToToken(token Token) ([][]byte, bool) {
+	data, ok := reader.ReadBytesToToken(token)
+	return reader.SplitLines(data), ok
 }
 
 // ReadBytesToToken reads all bytes from current position until the next instance of the given token
 // If the token cannot be found, returns nil
-func (reader *PDFTokenReader) ReadBytesToToken(token Token) ([]byte, error) {
+func (reader *PDFTokenReader) ReadBytesToToken(token Token) ([]byte, bool) {
 	reader.splitUntil(token)
 
 	buf := bytes.NewBuffer([]byte{})
 	for reader.scanner.Scan() {
 		buf.Write(reader.scanner.Bytes())
 	}
-	return buf.Bytes(), reader.scanner.Err()
+	return buf.Bytes(), reader.scanner.Err() != nil
+}
+
+// ReadBytes reads up to a fixed number of bytes
+func (reader *PDFTokenReader) ReadBytes(n int) ([]byte, bool) {
+	reader.splitNext(n)
+
+	buf := bytes.NewBuffer([]byte{})
+	for reader.scanner.Scan() {
+		buf.Write(reader.scanner.Bytes())
+	}
+	return buf.Bytes(), reader.scanner.Err() != nil
 }
 
 // findXrefTable is a special function to read the offset of the xref table from somewhere near the end of the PDF file
 func (reader *PDFTokenReader) findXrefTable() (int64, error) {
-	// reader.dirty()
-
 	// read the last chunk of file
 	stat, err := reader.file.Stat()
 	if err != nil {
 		return 0, err
 	}
-	var readFrom int64 = stat.Size() - int64(searchForStartxrefLength)
-	var readLen int64 = searchForStartxrefLength
+	var readFrom = stat.Size() - searchForStartxrefLength
+	var readLen = int64(searchForStartxrefLength)
 	if readFrom < 0 {
 		readFrom = 0
 		readLen = stat.Size()
@@ -490,7 +570,7 @@ func (reader *PDFTokenReader) checkXrefTable(offset int64) (int64, error) {
 	if _, err := reader.Seek(offset, 0); err != nil {
 		return offset, err
 	}
-	if peek, _ := reader.Peek(4); string(peek) != "xref" {
+	if peek := reader.Peek(4); string(peek) != "xref" {
 		fmt.Println("NO! xref !=", string(peek), "- must try harder")
 		// todo find the nearest "xref" token
 	}

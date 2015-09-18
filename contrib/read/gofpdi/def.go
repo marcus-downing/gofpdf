@@ -27,13 +27,6 @@ const (
 	DefaultBox = CropBox
 )
 
-// Value is one of: ...
-type Value interface {
-}
-
-// Dictionary is a mapping from names to values
-type Dictionary map[string]Value
-
 // PageBox is the bounding box for a page
 type PageBox struct {
 	gofpdf.PointType
