@@ -90,20 +90,6 @@ func (s String) Equals(v Value) bool {
 	return ok && s == s2
 }
 
-// Stream is a blob value
-type Stream []byte
-
-// Type of a Stream value
-func (s Stream) Type() ValueType {
-	return typeStream
-}
-
-// Equals checks if the value is an equivalent stream
-func (s Stream) Equals(v Value) bool {
-	s2, ok := v.(Stream)
-	return ok && bytes.Equal(s, s2)
-}
-
 // Hex is a hex value
 type Hex string
 
@@ -214,13 +200,12 @@ func (r ObjectRef) Type() ValueType {
 // Equals checks if the value is also null
 func (r ObjectRef) Equals(v Value) bool {
 	r2, ok := v.(ObjectRef)
-	return ok && r == r2 // r.obj == r2.obj && r.gen == r2.gen
+	return ok && r == r2
 }
 
 // ObjectDeclaration is a object identifier
 type ObjectDeclaration struct {
-	Obj    int
-	Gen    int
+	ObjectRef
 	Values []Value
 }
 
@@ -235,5 +220,22 @@ func (r ObjectDeclaration) Type() ValueType {
 // Equals checks if the value is also null
 func (r ObjectDeclaration) Equals(v Value) bool {
 	r2, ok := v.(ObjectDeclaration)
-	return ok && r == r2 // r.obj == r2.obj && r.gen == r2.gen
+	return ok && r.ObjectRef == r2.ObjectRef
+}
+
+// Stream is a blob value
+type Stream struct {
+	Parameters Dictionary
+	Bytes      []byte
+}
+
+// Type of a Stream value
+func (s Stream) Type() ValueType {
+	return typeStream
+}
+
+// Equals checks if the value is an equivalent stream
+func (s Stream) Equals(v Value) bool {
+	s2, ok := v.(Stream)
+	return ok && bytes.Equal(s, s2)
 }

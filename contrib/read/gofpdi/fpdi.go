@@ -50,6 +50,11 @@ type Fpdi struct {
 	k               float64    // default scale factor (number of points in user unit)
 }
 
+// Error returns the internal parser error; this will be nil if no error has occurred.
+func (f *Fpdi) Error() error {
+	return f.parser.Error()
+}
+
 // CountPages returns the number of pages in this source document
 func (td *Fpdi) CountPages() int {
 	return td.numPages

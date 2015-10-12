@@ -22,11 +22,12 @@ import (
 	// "os"
 	"strings"
 	// "regexp"
+	"math"
 	"bytes"
 	"strconv"
 	// "bufio"
 	"errors"
-	// "github.com/jung-kurt/gofpdf"
+	"github.com/jung-kurt/gofpdf"
 )
 
 const (
@@ -51,10 +52,7 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = parser.readXrefTable(offset)
-	if err != nil {
-		return nil, err
-	}
+	parser.readXrefTable(offset)
 
 	// check for encryption
 	// parser.checkEncryption()
@@ -62,6 +60,9 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 	// read root
 	// pagesDictionary := parser.resolveObject("/Pages")
 
+	if err := parser.Error(); err != nil {
+		return nil, err
+	}
 	return parser, nil
 }
 
@@ -79,7 +80,26 @@ type PDFParser struct {
 		xref         map[ObjectRef]int64 // all the xref offsets
 	}
 
-	currentObject Dictionary
+	currentObject Dictionary // the most recently read object
+	warnings      []error    // non-fatal errors encountered during reading
+	err           error      // the first fatal error encountered
+}
+
+// SetWarning notes a non-fatal parser error
+func (parser *PDFParser) SetWarning(warning error) {
+	parser.warnings = append(parser.warnings, warning)
+}
+
+// SetError notes a fatal parser error
+func (parser *PDFParser) SetError(err error) {
+	if parser.err == nil {
+		parser.err = err
+	}
+}
+
+// Error returns the internal parser error; this will be nil if no error has occurred.
+func (parser *PDFParser) Error() error {
+	return parser.err
 }
 
 func (parser *PDFParser) setPageNumber(pageNumber int) {
@@ -132,8 +152,6 @@ func (parser *PDFParser) GetPageBoxes(pageNumber int, k float64) PageBoxes {
 //
 // k is a scaling factor from user space units to points.
 func (parser *PDFParser) getPageBox(page PDFPage, boxIndex string, k float64) *PageBox {
-	// page = parser.resolveObject(page);
-
 	/*
 	   $page = $this->resolveObject($page);
 	   $box = null;
@@ -165,8 +183,38 @@ func (parser *PDFParser) getPageBox(page PDFPage, boxIndex string, k float64) *P
 	   }
 	*/
 
-	// page = resolveObject(page)
+	// page = parser.resolveObject(page)
 
+	if box, ok := page.Dictionary[boxIndex]; ok {
+		if ref, ok := box.(ObjectRef); ok {
+			box := parser.resolveObject(boxRef)
+		}
+
+		if arr, ok := box.(Array); ok {
+			x, _ := strconv.ParseFloat(arr[0], 64)
+			y, _ := strconv.ParseFloat(arr[1], 64)
+			x2, _ := strconv.ParseFloat(arr[2], 64)
+			y2, _ := strconv.ParseFloat(arr[3], 64)
+			w := math.Abs(x2 - x)
+			h := math.Abs(y2 - y)
+			llx := math.Min(x, x2)
+			lly := math.Min(y, y2)
+			urx := math.Max(x, x2)
+			ury := math.Max(y, y2)
+
+			return PageBox{
+				gofpdf.PointType{x / k, y / k},
+				gofpdf.SizeType{w / k, h / k},
+				gofpdf.PointType{llx / k, lly / k},
+				gofpdf.PointType{urx / k, ury / k},
+			}
+		}
+
+	}
+	if parent, ok := page.Dictionary["/Parent"]; ok {
+		parent := parser.resolveObject(parent)
+		return parser.getPageBox(parent, boxIndex, k)
+	}
 	return nil
 }
 
@@ -188,7 +236,7 @@ func (parser *PDFParser) checkXrefTableOffset(offset int64) (int64, error) {
 	return offset, nil
 }
 
-func (parser *PDFParser) readXrefTable(offset int64) error {
+func (parser *PDFParser) readXrefTable(offset int64) {
 	// fmt.Println("Reading xref table at", offset)
 
 	// offset, err := parser.reader.checkXrefTable(offset)
@@ -198,6 +246,7 @@ func (parser *PDFParser) readXrefTable(offset int64) error {
 
 	// first read in the Xref table data and the trailer dictionary
 	if _, err := parser.reader.Seek(offset, 0); err != nil {
+		parser.SetError(err)
 		return err
 	}
 	lines, ok := parser.reader.ReadLinesToToken(Token("trailer"))
@@ -465,5 +514,41 @@ func (parser *PDFParser) resolveObject(spec Value) Dictionary {
 		return obj
 	}
 	// Er, it's a what now?
-	return nil
+	return spec
+}
+
+func (parser *PDFParser) unfilterStream(s Stream) Stream {
+	filters := make([]StreamFilter)
+	if filter, ok := s.Parameters["/Filter"]; ok {
+		if objRef, ok := filter.(ObjectRef); ok {
+			filter = parser.resolveObject(filter)
+		}
+
+		if filterName, ok := filter.(Token); ok {
+			filters = append(filters, filterName)
+		} else if array, ok := filter.(Array); ok {
+			filters = append(filters, array[0])
+		}
+		return s
+	}
+	// I appear to be missing something...
+
+	for filter := range filters {
+		switch filter {
+		case "/Fl", "/FlateDecode":
+			steam = decodeFlate(stream)
+		case "/LZWDecode":
+			stream = decodeLZW(stream)
+		case "/ASCII85Decode":
+			stream = decodeAscii85(stream)
+		case "/ASCIIHexDecode":
+			stream = decodeAsciiHex(stream)
+		case "":
+			// do nothing
+		default:
+			// error: cannot decode
+			// ...
+		}
+	}
+	return s
 }
