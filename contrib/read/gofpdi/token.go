@@ -509,7 +509,7 @@ func (reader *PDFTokenReader) ReadBytesToToken(token Token) ([]byte, bool) {
 	for reader.scanner.Scan() {
 		buf.Write(reader.scanner.Bytes())
 	}
-	return buf.Bytes(), reader.scanner.Err() != nil
+	return buf.Bytes(), reader.scanner.Err() == nil
 }
 
 // ReadBytes reads up to a fixed number of bytes

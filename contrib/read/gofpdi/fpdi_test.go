@@ -34,10 +34,10 @@ func ExampleRead() {
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.UseTemplate(template)
-	fileStr := example.Filename("contrib_read_Read")
+	fileStr := example.Filename("Fpdi_ExampleRead")
 	err = pdf.OutputFileAndClose(fileStr)
 	example.Summary(err, fileStr)
 
 	// Output:
-	// Successfully generated ../../../pdf/contrib_read_Read.pdf
+	// Successfully generated ../../../pdf/Fpdi_ExampleRead.pdf
 }

@@ -80,7 +80,7 @@ type PDFParser struct {
 		xref         map[ObjectRef]int64 // all the xref offsets
 	}
 
-	currentObject Dictionary // the most recently read object
+	currentObject *ObjectDeclaration // the most recently read object
 	warnings      []error    // non-fatal errors encountered during reading
 	err           error      // the first fatal error encountered
 }
@@ -186,15 +186,15 @@ func (parser *PDFParser) getPageBox(page PDFPage, boxIndex string, k float64) *P
 	// page = parser.resolveObject(page)
 
 	if box, ok := page.Dictionary[boxIndex]; ok {
-		if ref, ok := box.(ObjectRef); ok {
-			box := parser.resolveObject(boxRef)
+		if boxRef, ok := box.(ObjectRef); ok {
+			box = parser.resolveObject(boxRef)
 		}
 
 		if arr, ok := box.(Array); ok {
-			x, _ := strconv.ParseFloat(arr[0], 64)
-			y, _ := strconv.ParseFloat(arr[1], 64)
-			x2, _ := strconv.ParseFloat(arr[2], 64)
-			y2, _ := strconv.ParseFloat(arr[3], 64)
+			x := arr[0].ToReal().ToFloat64()
+			y := arr[1].ToReal().ToFloat64()
+			x2 := arr[2].ToReal().ToFloat64()
+			y2 := arr[3].ToReal().ToFloat64()
 			w := math.Abs(x2 - x)
 			h := math.Abs(y2 - y)
 			llx := math.Min(x, x2)
@@ -202,7 +202,7 @@ func (parser *PDFParser) getPageBox(page PDFPage, boxIndex string, k float64) *P
 			urx := math.Max(x, x2)
 			ury := math.Max(y, y2)
 
-			return PageBox{
+			return &PageBox{
 				gofpdf.PointType{x / k, y / k},
 				gofpdf.SizeType{w / k, h / k},
 				gofpdf.PointType{llx / k, lly / k},
@@ -213,7 +213,8 @@ func (parser *PDFParser) getPageBox(page PDFPage, boxIndex string, k float64) *P
 	}
 	if parent, ok := page.Dictionary["/Parent"]; ok {
 		parent := parser.resolveObject(parent)
-		return parser.getPageBox(parent, boxIndex, k)
+		parentPage := PDFPage{parent, 0}
+		return parser.getPageBox(parentPage, boxIndex, k)
 	}
 	return nil
 }
@@ -246,12 +247,18 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 
 	// first read in the Xref table data and the trailer dictionary
 	if _, err := parser.reader.Seek(offset, 0); err != nil {
+		fmt.Println("Reading xref table at", offset)
 		parser.SetError(err)
-		return err
 	}
 	lines, ok := parser.reader.ReadLinesToToken(Token("trailer"))
 	if !ok {
-		return errors.New("Cannot read end of xref table")
+		fmt.Println("Reading xref table at", offset)
+		fi, _ := parser.reader.file.Stat()
+		fmt.Printf("The file is %d bytes long\n", fi.Size())
+
+		// fmt.Println("Read lines to token 'trailer'", lines)
+		err := errors.New("Cannot read end of xref table")
+		parser.SetError(err)
 	}
 
 	// trailer, ok := parser.readValue().(Dictionary)
@@ -301,7 +308,8 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 				}
 				start++
 			default:
-				return errors.New("Unexpected data in xref table: '" + line + "'")
+				err := errors.New("Unexpected data in xref table: '" + line + "'")
+				parser.SetError(err)
 			}
 		}
 	}
@@ -313,7 +321,7 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 
 	// fmt.Println("Xref table:", fmt.Sprintf("%v", parser.xref))
 
-	return nil
+	// return nil
 }
 
 // readValue reads the next value from the PDF
@@ -403,11 +411,11 @@ func (parser *PDFParser) readValue() Value {
 		}
 
 		// TODO get the stream length
-		// lengthObj := parser.currentObject["/Length"]
-		// if lengthObj.Type() == typeObjRef {
-		// 	lengthObj = lengthObj.(ObjectRef).Resolve()
-		// }
-		length := 0
+		lengthObj := parser.currentObject.GetParam("/Length")
+		if lengthObj.Type() == typeObjRef {
+			lengthObj = parser.resolveObject(lengthObj)
+		}
+		length := int(lengthObj.ToNumeric().ToInt64()) // lengthObj[1] ???
 
 		stream, _ := parser.reader.ReadBytes(length)
 
@@ -416,7 +424,7 @@ func (parser *PDFParser) readValue() Value {
 			// round trip will start at a new offset
 		}
 
-		return Stream(stream)
+		return Stream{parser.currentObject.GetDictionary(), stream}
 	}
 
 	if real, err := strconv.ParseFloat(str, 64); err != nil {
@@ -435,7 +443,10 @@ func (parser *PDFParser) readValue() Value {
 				switch string(moreTokens[1]) {
 				case "obj":
 					parser.reader.ReadTokens(2)
-					return ObjectDeclaration{number, number2}
+					objectRef := ObjectRef{number, number2}
+					values := make([]Value, 0, 2) // ???
+					// values := Dictionary{}
+					return ObjectDeclaration{objectRef, values}
 				case "R":
 					parser.reader.ReadTokens(2)
 					return ObjectRef{number, number2}
@@ -479,26 +490,30 @@ func (parser *PDFParser) resolveObject(spec Value) Dictionary {
 				}
 			}
 
-			// If we're being asked to store all the information
-			// about the object, we add the object ID and generation
-			// number for later use
-			result := ObjectDeclaration{header.Obj, header.Gen, make([]Value, 0, 2)}
-			parser.currentObject = result
+			if headerRef, ok := header.(ObjectRef); ok {
+				// If we're being asked to store all the information
+				// about the object, we add the object ID and generation
+				// number for later use
+				result := ObjectDeclaration{headerRef, make([]Value, 0, 2)}
+				parser.currentObject = &result
 
-			// Now simply read the object data until
-			// we encounter an end-of-object marker
-			for {
-				value := parser.readValue()
-				if value == nil || len(result.Values) > 1 { // ???
-					// in this case the parser couldn't find an "endobj" so we break here
-					break
+				// Now simply read the object data until
+				// we encounter an end-of-object marker
+				for {
+					value := parser.readValue()
+					if value == nil || len(result.Values) > 1 { // ???
+						// in this case the parser couldn't find an "endobj" so we break here
+						break
+					}
+
+					if value.Equals(Token("endobj")) {
+						break
+					}
+
+					result.Values = append(result.Values, value)
 				}
-
-				if value.Equals(Token("endobj")) {
-					break
-				}
-
-				result.Values = append(result.Values, value)
+			} else {
+				// ?
 			}
 
 			// Reset to the start
@@ -513,42 +528,34 @@ func (parser *PDFParser) resolveObject(spec Value) Dictionary {
 	if obj, ok := spec.(Dictionary); ok {
 		return obj
 	}
+
 	// Er, it's a what now?
-	return spec
+	parser.SetWarning(fmt.Errorf("Attempt to resolve unknown value as object spec: %v", spec))
+	return nil
 }
 
 func (parser *PDFParser) unfilterStream(s Stream) Stream {
-	filters := make([]StreamFilter)
+	filters := make([]StreamFilter, 8)
 	if filter, ok := s.Parameters["/Filter"]; ok {
 		if objRef, ok := filter.(ObjectRef); ok {
-			filter = parser.resolveObject(filter)
+			filter = parser.resolveObject(objRef)
 		}
 
 		if filterName, ok := filter.(Token); ok {
-			filters = append(filters, filterName)
+			streamFilter := GetStreamFilter(filterName.String())
+			filters = append(filters, streamFilter)
 		} else if array, ok := filter.(Array); ok {
-			filters = append(filters, array[0])
+			filterName := array[0].ToString().String()
+			streamFilter := GetStreamFilter(filterName)
+			filters = append(filters, streamFilter)
 		}
-		return s
+		// return s
 	}
 	// I appear to be missing something...
 
-	for filter := range filters {
-		switch filter {
-		case "/Fl", "/FlateDecode":
-			steam = decodeFlate(stream)
-		case "/LZWDecode":
-			stream = decodeLZW(stream)
-		case "/ASCII85Decode":
-			stream = decodeAscii85(stream)
-		case "/ASCIIHexDecode":
-			stream = decodeAsciiHex(stream)
-		case "":
-			// do nothing
-		default:
-			// error: cannot decode
-			// ...
-		}
+	var stream Stream = s
+	for _, filter := range filters {
+		stream = filter(stream)
 	}
 	return s
 }
