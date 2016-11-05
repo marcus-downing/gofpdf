@@ -33,6 +33,17 @@ const (
 	searchForStartxrefLength = 1024 // 5500 // distance from the end of the file to search for the startxref offset
 )
 
+const (
+	splitterNil        = iota
+	splitterOnLines
+	splitterPeek
+	splitterNext
+	splitterUntil
+	splitterPeekTokens
+	splitterOnTokens
+	splitterOnBytes
+)
+
 // PDFTokenReader is a low-level reader for the tokens in a PDF file
 // See pdf_parser.php and pdf_context.php
 type PDFTokenReader struct {
@@ -41,6 +52,7 @@ type PDFTokenReader struct {
 	stack      []Token        // a stack of pre-read tokens
 	lineEnding []byte         // the type of line ending this file uses
 	pdfVersion string         // the version header
+	splitter   byte           // how was it last split
 }
 
 // NewTokenReader constructs a low level reader for a PDF file
@@ -71,31 +83,58 @@ func (reader *PDFTokenReader) Close() {
 	reader.file.Close()
 }
 
+// updateScanner switches to a new scanner, but only if the splitter is different
+func (reader *PDFTokenReader) updateScanner(splitter byte) {
+	if reader.splitter == splitterNil {
+		fmt.Println("Initial splitter:", splitter)
+		reader.splitter = splitter
+		return
+	}
+	switch (splitter) {
+	case splitterOnLines:
+	case splitterOnBytes:
+	case splitterOnTokens:
+		if reader.splitter == splitter {
+			return
+		}
+	}
+	fmt.Println("Switching to splitter:", splitter)
+	reader.scanner = bufio.NewScanner(reader.file)
+	reader.splitter = splitter
+}
+
 func (reader *PDFTokenReader) splitOnLines() {
+	reader.updateScanner(splitterOnLines)
 	reader.scanner.Split(splitLines(reader.lineEnding))
 }
 
 func (reader *PDFTokenReader) splitPeek(n int, into *[]byte) {
+	reader.updateScanner(splitterPeek)
 	reader.scanner.Split(splitPeek(n, into))
 }
 
 func (reader *PDFTokenReader) splitNext(n int) {
+	reader.updateScanner(splitterNext)
 	reader.scanner.Split(splitNext(n))
 }
 
 func (reader *PDFTokenReader) splitUntil(token Token) {
+	reader.updateScanner(splitterUntil)
 	reader.scanner.Split(splitUntil(token))
 }
 
 func (reader *PDFTokenReader) splitPeekTokens(n int, into *[]Token) {
+	reader.updateScanner(splitterPeekTokens)
 	reader.scanner.Split(splitPeekTokens(n, into))
 }
 
 func (reader *PDFTokenReader) splitOnTokens() {
+	reader.updateScanner(splitterOnTokens)
 	reader.scanner.Split(splitTokens)
 }
 
 func (reader *PDFTokenReader) splitOnBytes() {
+	reader.updateScanner(splitterOnBytes)
 	reader.scanner.Split(splitBytes)
 }
 

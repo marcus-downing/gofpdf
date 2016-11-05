@@ -78,6 +78,7 @@ type PDFParser struct {
 		maxObject    int                 // the highest xref object number
 		xrefLocation int64               // the location of the xref table
 		xref         map[ObjectRef]int64 // all the xref offsets
+		trailer      Dictionary          // trailer data
 	}
 
 	currentObject *ObjectDeclaration // the most recently read object
@@ -238,7 +239,7 @@ func (parser *PDFParser) checkXrefTableOffset(offset int64) (int64, error) {
 }
 
 func (parser *PDFParser) readXrefTable(offset int64) {
-	// fmt.Println("Reading xref table at", offset)
+	fmt.Println("Reading xref table at", offset)
 
 	// offset, err := parser.reader.checkXrefTable(offset)
 	// if err != nil {
@@ -261,11 +262,6 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 		parser.SetError(err)
 	}
 
-	// trailer, ok := parser.readValue().(Dictionary)
-	// if !ok {
-	// 	return errors.New("Not a dictionary")
-	// }
-
 	// read the lines, store the xref table data
 	start := 1
 	if parser.xref.xrefLocation == 0 {
@@ -276,7 +272,7 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 	for _, lineBytes := range lines {
 		// fmt.Println("Xref table line:", lineBytes)
 		line := strings.TrimSpace(string(lineBytes))
-		// fmt.Println("Reading xref table line:", line)
+		fmt.Println("Reading xref table line:", line)
 		if line != "" {
 			if line == "xref" {
 				continue
@@ -314,12 +310,25 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 		}
 	}
 
-	// process the trailer
-	// if parser.xref.trailer == nil {
-	// 	parser.xref.trailer = trailer
-	// }
+	// read the trailer dictionary
+	trailerPeekTokens := parser.reader.PeekTokens(16)
 
-	// fmt.Println("Xref table:", fmt.Sprintf("%v", parser.xref))
+	trailerValue := parser.readValue()
+	trailer, ok := trailerValue.(Dictionary)
+	if !ok {
+		fmt.Println("Trailer peek:", trailerPeekTokens)
+		fmt.Println("Trailer:", trailerValue)
+		err := errors.New("Trailer not a dictionary")
+		parser.SetError(err)
+	}
+
+	// process the trailer
+	if parser.xref.trailer == nil {
+		fmt.Println("Storing trailer data:", trailer)
+		parser.xref.trailer = trailer
+	}
+
+	fmt.Println("Xref table:", fmt.Sprintf("%v", parser.xref))
 
 	// return nil
 }
