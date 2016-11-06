@@ -3,7 +3,7 @@ package gofpdi_test
 import (
 	"fmt"
 	"github.com/jung-kurt/gofpdf"
-	"github.com/jung-kurt/gofpdf/contrib/read/gofpdi"
+	"github.com/jung-kurt/gofpdf/contrib/gofpdi"
 	"github.com/jung-kurt/gofpdf/internal/example"
 	// "os"
 	// "bufio"

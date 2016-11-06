@@ -22,6 +22,7 @@ import (
 	// "math"
 	// "strconv"
 	"github.com/jung-kurt/gofpdf"
+	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
 )
 
 // Open makes an existing PDF file usable for templates
@@ -33,7 +34,7 @@ func Open(filename string) (*Fpdi, error) {
 
 	td := new(Fpdi)
 	td.parser = parser
-	td.pdfVersion = td.parser.reader.pdfVersion
+	td.pdfVersion = td.parser.reader.PdfVersion
 
 	// td.k = ???
 	// ???
@@ -76,8 +77,8 @@ func (td *Fpdi) ImportPage(pageNumber int, boxName string, groupXObject bool) go
 	t.id = gofpdf.GenerateTemplateID()
 
 	pageBoxes := td.parser.GetPageBoxes(pageNumber, td.k)
-	_ /*pageBox*/ = pageBoxes.get(boxName)
-	td.lastUsedPageBox = pageBoxes.lastUsedPageBox
+	_ /*pageBox*/ = pageBoxes.Get(boxName)
+	td.lastUsedPageBox = pageBoxes.LastUsedPageBox
 
 	return t
 }

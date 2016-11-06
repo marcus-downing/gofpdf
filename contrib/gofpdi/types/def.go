@@ -1,4 +1,4 @@
-package gofpdi
+package types
 
 import (
 	// "fmt"
@@ -6,6 +6,13 @@ import (
 	// "strconv"
 	"github.com/jung-kurt/gofpdf"
 )
+
+
+const (
+	// DefaultPdfVersion is the format version to assume files are until told otherwise
+	DefaultPdfVersion = "1.3"
+)
+
 
 const (
 	// MediaBox is a bounding box that includes bleed area and crop marks
@@ -27,6 +34,7 @@ const (
 	DefaultBox = CropBox
 )
 
+
 // PageBox is the bounding box for a page
 type PageBox struct {
 	gofpdf.PointType
@@ -38,12 +46,12 @@ type PageBox struct {
 // PageBoxes is a transient collection of the page boxes used in a document
 // The keys are the constants: MediaBox, CrobBox, BleedBox, TrimBox, ArtBox
 type PageBoxes struct {
-	pageBoxes       map[string]*PageBox
-	lastUsedPageBox string
+	PageBoxes       map[string]*PageBox
+	LastUsedPageBox string
 }
 
 // select a
-func (boxes PageBoxes) get(boxName string) *PageBox {
+func (boxes PageBoxes) Get(boxName string) *PageBox {
 	/**
 	 * MediaBox
 	 * CropBox: Default -> MediaBox
@@ -51,17 +59,17 @@ func (boxes PageBoxes) get(boxName string) *PageBox {
 	 * TrimBox: Default -> CropBox
 	 * ArtBox: Default -> CropBox
 	 */
-	if pageBox, ok := boxes.pageBoxes[boxName]; ok {
-		boxes.lastUsedPageBox = boxName
+	if pageBox, ok := boxes.PageBoxes[boxName]; ok {
+		boxes.LastUsedPageBox = boxName
 		return pageBox
 	}
 	switch boxName {
 	case BleedBox:
 	case TrimBox:
 	case ArtBox:
-		return boxes.get(CropBox)
+		return boxes.Get(CropBox)
 	case CropBox:
-		return boxes.get(MediaBox)
+		return boxes.Get(MediaBox)
 	}
 	return nil
 }

@@ -28,16 +28,14 @@ import (
 	// "bufio"
 	"errors"
 	"github.com/jung-kurt/gofpdf"
-)
-
-const (
-	defaultPdfVersion = "1.3"
+	"github.com/jung-kurt/gofpdf/contrib/gofpdi/readpdf"
+	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
 )
 
 // OpenPDFParser opens an existing PDF file and readies it
 func OpenPDFParser(filename string) (*PDFParser, error) {
 	// fmt.Println("Opening PDF file:", filename)
-	reader, err := NewTokenReader(filename)
+	reader, err := readpdf.NewTokenReader(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +46,7 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 	parser.lastUsedPageBox = DefaultBox
 
 	// read xref data
-	offset, err := parser.reader.findXrefTable()
+	offset, err := parser.reader.FindXrefTable()
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +67,7 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 // PDFParser is a high-level parser for PDF elements
 // See fpdf_pdf_parser.php
 type PDFParser struct {
-	reader          *PDFTokenReader // the underlying token reader
+	reader          *readpdf.PDFTokenReader // the underlying token reader
 	pageNumber      int             // the current page number
 	lastUsedPageBox string          // the most recently used page box
 	pages           []PDFPage       // already loaded pages
@@ -254,7 +252,7 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 	lines, ok := parser.reader.ReadLinesToToken(Token("trailer"))
 	if !ok {
 		fmt.Println("Reading xref table at", offset)
-		fi, _ := parser.reader.file.Stat()
+		fi, _ := parser.reader.FileStat()
 		fmt.Printf("The file is %d bytes long\n", fi.Size())
 
 		// fmt.Println("Read lines to token 'trailer'", lines)
@@ -413,7 +411,7 @@ func (parser *PDFParser) readValue() Value {
 		// ensure line breaks in front of the stream
 		peek := parser.reader.Peek(32)
 		for _, c := range peek {
-			if !isPdfWhitespace(c) {
+			if !readpdf.IsPdfWhitespace(c) {
 				break
 			}
 			parser.reader.ReadByte()
@@ -421,7 +419,7 @@ func (parser *PDFParser) readValue() Value {
 
 		// TODO get the stream length
 		lengthObj := parser.currentObject.GetParam("/Length")
-		if lengthObj.Type() == typeObjRef {
+		if lengthObj.Type() == TypeObjRef {
 			lengthObj = parser.resolveObject(lengthObj)
 		}
 		length := int(lengthObj.ToNumeric().ToInt64()) // lengthObj[1] ???

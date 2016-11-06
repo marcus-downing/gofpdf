@@ -1,4 +1,4 @@
-package gofpdi
+package readpdf
 
 /*
  * Copyright (c) 2015 Kurt Jung (Gmail: kurt.w.jung),
@@ -26,6 +26,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
 )
 
 const (
@@ -33,26 +34,16 @@ const (
 	searchForStartxrefLength = 1024 // 5500 // distance from the end of the file to search for the startxref offset
 )
 
-const (
-	splitterNil        = iota
-	splitterOnLines
-	splitterPeek
-	splitterNext
-	splitterUntil
-	splitterPeekTokens
-	splitterOnTokens
-	splitterOnBytes
-)
-
 // PDFTokenReader is a low-level reader for the tokens in a PDF file
 // See pdf_parser.php and pdf_context.php
 type PDFTokenReader struct {
-	file       *os.File       // the file being read
-	scanner    *bufio.Scanner // a syntax-specific tokenizer
+	scanner    MutantScanner  // the file scanner
+	// file       *os.File       // the file being read
+	// scanner    *bufio.Scanner // a syntax-specific tokenizer
 	stack      []Token        // a stack of pre-read tokens
-	lineEnding []byte         // the type of line ending this file uses
-	pdfVersion string         // the version header
-	splitter   byte           // how was it last split
+	// lineEnding []byte         // the type of line ending this file uses
+	PdfVersion string         // the version header
+	// splitter   byte           // how was it last split
 }
 
 // NewTokenReader constructs a low level reader for a PDF file
@@ -63,13 +54,14 @@ func NewTokenReader(filename string) (*PDFTokenReader, error) {
 	}
 
 	reader := new(PDFTokenReader)
-	reader.file = file
-	reader.calibrateLineEndings()
-	reader.scanner = bufio.NewScanner(reader.file)
-	reader.lineEnding = []byte("\n")
+	reader.scanner = NewMutantScanner(file)
+	// reader.file = file
+	// reader.calibrateLineEndings()
+	// reader.scanner = bufio.NewScanner(reader.file)
+	// reader.lineEnding = []byte("\n")
 
 	// always read the PDF version first
-	reader.pdfVersion = defaultPdfVersion
+	reader.PdfVersion = DefaultPdfVersion
 	if err := reader.getPdfVersion(); err != nil {
 		return nil, err
 	}
@@ -77,77 +69,44 @@ func NewTokenReader(filename string) (*PDFTokenReader, error) {
 	return reader, nil
 }
 
-// Close releases references and closes the file handle of the parser
-func (reader *PDFTokenReader) Close() {
-	reader.scanner = nil
-	reader.file.Close()
+func (reader *PDFTokenReader) FileStat() (os.FileInfo, error) {
+	fi, err := reader.scanner.file.Stat()
+	return fi, err
 }
 
-// updateScanner switches to a new scanner, but only if the splitter is different
-func (reader *PDFTokenReader) updateScanner(splitter byte) {
-	if reader.splitter == splitterNil {
-		fmt.Println("Initial splitter:", splitter)
-		reader.splitter = splitter
-		return
-	}
-	switch (splitter) {
-	case splitterOnLines:
-	case splitterOnBytes:
-	case splitterOnTokens:
-		if reader.splitter == splitter {
-			return
-		}
-	}
-	fmt.Println("Switching to splitter:", splitter)
-	reader.scanner = bufio.NewScanner(reader.file)
-	reader.splitter = splitter
+// Close releases references and closes the file handle of the parser
+func (reader *PDFTokenReader) Close() {
+	reader.scanner.Close()
 }
 
 func (reader *PDFTokenReader) splitOnLines() {
-	reader.updateScanner(splitterOnLines)
-	reader.scanner.Split(splitLines(reader.lineEnding))
+	reader.scanner.Split(splitLines(reader.scanner.lineEnding), splitterOnLines)
 }
 
 func (reader *PDFTokenReader) splitPeek(n int, into *[]byte) {
-	reader.updateScanner(splitterPeek)
-	reader.scanner.Split(splitPeek(n, into))
+	reader.scanner.Split(splitPeek(n, into), splitterPeek)
 }
 
 func (reader *PDFTokenReader) splitNext(n int) {
-	reader.updateScanner(splitterNext)
-	reader.scanner.Split(splitNext(n))
+	reader.scanner.Split(splitNext(n), splitterNext)
 }
 
 func (reader *PDFTokenReader) splitUntil(token Token) {
-	reader.updateScanner(splitterUntil)
-	reader.scanner.Split(splitUntil(token))
+	reader.scanner.Split(splitUntil(token), splitterUntil)
 }
 
 func (reader *PDFTokenReader) splitPeekTokens(n int, into *[]Token) {
-	reader.updateScanner(splitterPeekTokens)
-	reader.scanner.Split(splitPeekTokens(n, into))
+	reader.scanner.Split(splitPeekTokens(n, into), splitterPeekTokens)
 }
 
 func (reader *PDFTokenReader) splitOnTokens() {
-	reader.updateScanner(splitterOnTokens)
-	reader.scanner.Split(splitTokens)
+	reader.scanner.Split(splitTokens, splitterOnTokens)
 }
 
 func (reader *PDFTokenReader) splitOnBytes() {
-	reader.updateScanner(splitterOnBytes)
-	reader.scanner.Split(splitBytes)
+	reader.scanner.Split(splitBytes, splitterOnBytes)
 }
 
-// calibrateLineEndings uses some sample data to determine which line-ending is used by this file
-func (reader *PDFTokenReader) calibrateLineEndings() {
-	sample := make([]byte, 100)
-	reader.file.Read(sample)
-	rx := regexp.MustCompile("\r\n|\n|\r")
-	match := rx.Find(sample)
-	if match != nil {
-		reader.lineEnding = match
-	}
-}
 
 // dropCR drops a terminal \r from the data.
 func dropCR(data []byte) []byte {
@@ -263,6 +222,7 @@ func splitBytes(data []byte, atEOF bool) (advance int, token []byte, err error) 
 	return 1, data[0:1], nil
 }
 
+
 // splitPeekTokens returns
 func splitPeekTokens(n int, into *[]Token) func([]byte, bool) (advance int, token []byte, err error) {
 	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
@@ -309,7 +269,7 @@ func splitTokens(data []byte, atEOF bool) (advance int, token []byte, err error)
 
 	// Strip away any whitespace
 	var offset int
-	for offset = 0; offset < len(data) && isPdfWhitespace(data[offset]); offset++ {
+	for offset = 0; offset < len(data) && IsPdfWhitespace(data[offset]); offset++ {
 	}
 
 	// if we're at the end of the data, signal that with an EOF
@@ -353,7 +313,7 @@ func splitTokens(data []byte, atEOF bool) (advance int, token []byte, err error)
 	// This is another type of token (probably a dictionary entry or a numeric value). Find the end and return it.
 	// os.Stderr.WriteString("Scanner: other token\n")
 	var nextToken int
-	for nextToken = offset; nextToken < len(data) && !isPdfWhitespaceOrBreak(data[nextToken]); nextToken++ {
+	for nextToken = offset; nextToken < len(data) && !IsPdfWhitespaceOrBreak(data[nextToken]); nextToken++ {
 		// os.Stderr.WriteString(fmt.Sprintf("Skipped char: %v\n", data[nextToken]))
 	}
 	token = data[offset:nextToken]
@@ -361,7 +321,7 @@ func splitTokens(data []byte, atEOF bool) (advance int, token []byte, err error)
 	return nextToken, token, nil
 }
 
-func isPdfWhitespace(b byte) bool {
+func IsPdfWhitespace(b byte) bool {
 	switch b {
 	case 0x00, // null
 		0x09, // tab
@@ -374,7 +334,7 @@ func isPdfWhitespace(b byte) bool {
 	return false
 }
 
-func isPdfWhitespaceOrBreak(b byte) bool {
+func IsPdfWhitespaceOrBreak(b byte) bool {
 	switch b {
 	case 0x00, // null
 		0x09, // tab
@@ -414,7 +374,7 @@ func (reader *PDFTokenReader) getPdfVersion() error {
 	re := regexp.MustCompile("\\d\\.\\d")
 	match := re.Find(b)
 	if match != nil {
-		reader.pdfVersion = string(match[:])
+		reader.PdfVersion = string(match[:])
 	}
 	return nil
 }
@@ -423,7 +383,7 @@ func (reader *PDFTokenReader) getPdfVersion() error {
 func (reader *PDFTokenReader) SplitLines(data []byte) [][]byte {
 	lines := make([][]byte, 0, len(data)/16)
 	scanner := bufio.NewScanner(bytes.NewReader(data))
-	scanner.Split(splitLines(reader.lineEnding))
+	scanner.Split(splitLines(reader.scanner.lineEnding))
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		lines = append(lines, line)
@@ -445,15 +405,15 @@ func (reader *PDFTokenReader) SplitTokens(data []byte) []Token {
 
 // Reset a reader to the start of the file
 func (reader *PDFTokenReader) Reset() (int64, error) {
-	newOffset, err := reader.file.Seek(0, 0)
-	reader.scanner = bufio.NewScanner(reader.file)
+	newOffset, err := reader.scanner.file.Seek(0, 0)
+	reader.scanner.Reset()
 	return newOffset, err
 }
 
 // Seek to a given point in the file
 func (reader *PDFTokenReader) Seek(offset int64, whence int) (int64, error) {
-	newOffset, err := reader.file.Seek(offset, whence)
-	reader.scanner = bufio.NewScanner(reader.file)
+	newOffset, err := reader.scanner.file.Seek(offset, whence)
+	reader.scanner.Reset()
 	return newOffset, err
 }
 
@@ -562,10 +522,10 @@ func (reader *PDFTokenReader) ReadBytes(n int) ([]byte, bool) {
 	return buf.Bytes(), reader.scanner.Err() != nil
 }
 
-// findXrefTable is a special function to read the offset of the xref table from somewhere near the end of the PDF file
-func (reader *PDFTokenReader) findXrefTable() (int64, error) {
+// FindXrefTable is a special function to read the offset of the xref table from somewhere near the end of the PDF file
+func (reader *PDFTokenReader) FindXrefTable() (int64, error) {
 	// read the last chunk of file
-	stat, err := reader.file.Stat()
+	stat, err := reader.scanner.file.Stat()
 	if err != nil {
 		return 0, err
 	}
@@ -577,10 +537,10 @@ func (reader *PDFTokenReader) findXrefTable() (int64, error) {
 	}
 
 	b := make([]byte, readLen)
-	if _, err := reader.file.Seek(readFrom, 0); err != nil {
+	if _, err := reader.scanner.file.Seek(readFrom, 0); err != nil {
 		return 0, err
 	}
-	_, err = reader.file.Read(b)
+	_, err = reader.scanner.file.Read(b)
 	if err == io.EOF {
 		fmt.Println("EOF while reading")
 	} else if err != nil {

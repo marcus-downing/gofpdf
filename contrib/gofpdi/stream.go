@@ -1,5 +1,9 @@
 package gofpdi
 
+import (
+	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
+)
+
 // StreamFilter is any binary decode function
 type StreamFilter func(Stream) Stream
 

@@ -1,4 +1,4 @@
-package gofpdi
+package types
 
 import (
 	"bytes"
@@ -8,26 +8,26 @@ import (
 	"strconv"
 )
 
-// ValueType is an enum of the given types
+// ValueType is an enum of the given Types
 type ValueType int8
 
 const (
-	typeNull       = 0  // Null
-	typeNumeric    = 1  // Numeric
-	typeToken      = 2  // Token
-	typeHex        = 3  // Hex value
-	typeString     = 4  // String value
-	typeDictionary = 5  // Dictionary
-	typeArray      = 6  // Array
-	typeObjDec     = 7  // Object declaration
-	typeObjRef     = 8  // Object reference
-	typeObject     = 9  // Object
-	typeStream     = 10 // Stream
-	typeBoolean    = 11 // Boolean
-	typeReal       = 12 // Real number
+	TypeNull       = 0  // Null
+	TypeNumeric    = 1  // Numeric
+	TypeToken      = 2  // Token
+	TypeHex        = 3  // Hex value
+	TypeString     = 4  // String value
+	TypeDictionary = 5  // Dictionary
+	TypeArray      = 6  // Array
+	TypeObjDec     = 7  // Object declaration
+	TypeObjRef     = 8  // Object reference
+	TypeObject     = 9  // Object
+	TypeStream     = 10 // Stream
+	TypeBoolean    = 11 // Boolean
+	TypeReal       = 12 // Real number
 )
 
-// Value is one the given types
+// Value is one the given Types
 type Value interface {
 	Type() ValueType
 	Equals(Value) bool
@@ -52,7 +52,7 @@ func (t Token) ToRegex() string {
 
 // Type of a token value
 func (t Token) Type() ValueType {
-	return typeToken
+	return TypeToken
 }
 
 // Equals tests if the token matches a given object
@@ -94,7 +94,7 @@ type Dictionary map[string]Value
 
 // Type of a Dictionary value
 func (d Dictionary) Type() ValueType {
-	return typeDictionary
+	return TypeDictionary
 }
 
 // Equals checks if the value is an equivalent dictionary
@@ -132,7 +132,7 @@ type String string
 
 // Type of a String value
 func (s String) Type() ValueType {
-	return typeString
+	return TypeString
 }
 
 // Equals checks if the value is an equivalent string
@@ -176,7 +176,7 @@ type Hex string
 
 // Type of a Hex value
 func (h Hex) Type() ValueType {
-	return typeHex
+	return TypeHex
 }
 
 // Equals checks if the value is an equivalent hex value
@@ -218,7 +218,7 @@ var Numeric_NaN Numeric = 0
 
 // Type of a Numeric value
 func (n Numeric) Type() ValueType {
-	return typeNumeric
+	return TypeNumeric
 }
 
 // Equals checks if the value is an equivalent number
@@ -255,7 +255,7 @@ var Real_NaN Real = Real(math.NaN())
 
 // Type of a Real value
 func (r Real) Type() ValueType {
-	return typeReal
+	return TypeReal
 }
 
 // Equals checks if the value is an equivalent number
@@ -289,7 +289,7 @@ type Boolean bool
 
 // Type of a Boolean value
 func (b Boolean) Type() ValueType {
-	return typeBoolean
+	return TypeBoolean
 }
 
 // Equals checks if the value is an equivalent boolean
@@ -330,7 +330,7 @@ type Array []Value
 
 // Type of an Array value
 func (a Array) Type() ValueType {
-	return typeArray
+	return TypeArray
 }
 
 // Equals checks if the value is an equivalent array
@@ -373,7 +373,7 @@ type Null struct{}
 
 // Type of a Null value
 func (n Null) Type() ValueType {
-	return typeNull
+	return TypeNull
 }
 
 // Equals checks if the value is also null
@@ -407,7 +407,7 @@ type ObjectRef struct {
 
 // Type of a ObjectRef value
 func (r ObjectRef) Type() ValueType {
-	return typeObjRef
+	return TypeObjRef
 }
 
 // Equals checks if the value is also null
@@ -441,16 +441,16 @@ type ObjectDeclaration struct {
 
 // Type of a ObjectRef value
 func (r ObjectDeclaration) Type() ValueType {
-	if len(r.Values) > 0 && r.Values[0].Type() == typeStream {
-		return typeStream
+	if len(r.Values) > 0 && r.Values[0].Type() == TypeStream {
+		return TypeStream
 	}
-	return typeObjRef
+	return TypeObjRef
 }
 
 // GetParam looks up values in an object's dictionary (if it has one)
 func (r ObjectDeclaration) GetParam(key string) Value {
 	for _, v := range r.Values {
-		if v.Type() == typeDictionary {
+		if v.Type() == TypeDictionary {
 			d := v.(Dictionary)
 			if value, ok := d[key]; ok {
 				return value
@@ -463,7 +463,7 @@ func (r ObjectDeclaration) GetParam(key string) Value {
 // GetDictionary picks an object's dictionary out of its value set (if it has one)
 func (r ObjectDeclaration) GetDictionary() Dictionary {
 	for _, v := range r.Values {
-		if v.Type() == typeDictionary {
+		if v.Type() == TypeDictionary {
 			return v.(Dictionary)
 		}
 	}
@@ -501,7 +501,7 @@ type Stream struct {
 
 // Type of a Stream value
 func (s Stream) Type() ValueType {
-	return typeStream
+	return TypeStream
 }
 
 // Equals checks if the value is an equivalent stream
