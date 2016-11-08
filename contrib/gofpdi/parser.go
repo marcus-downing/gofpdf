@@ -19,7 +19,7 @@ package gofpdi
 
 import (
 	"fmt"
-	// "os"
+	"os"
 	"strings"
 	// "regexp"
 	"math"
@@ -34,8 +34,20 @@ import (
 
 // OpenPDFParser opens an existing PDF file and readies it
 func OpenPDFParser(filename string) (*PDFParser, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	// read the last chunk of file
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	filesize := stat.Size()
+
 	// fmt.Println("Opening PDF file:", filename)
-	reader, err := readpdf.NewTokenReader(filename)
+	reader, err := readpdf.NewTokenReader(file, filesize)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +249,7 @@ func (parser *PDFParser) checkXrefTableOffset(offset int64) (int64, error) {
 }
 
 func (parser *PDFParser) readXrefTable(offset int64) {
-	fmt.Println("Reading xref table at", offset)
+	// fmt.Println("Reading xref table at", offset)
 
 	// offset, err := parser.reader.checkXrefTable(offset)
 	// if err != nil {
@@ -252,8 +264,8 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 	lines, ok := parser.reader.ReadLinesToToken(Token("trailer"))
 	if !ok {
 		fmt.Println("Reading xref table at", offset)
-		fi, _ := parser.reader.FileStat()
-		fmt.Printf("The file is %d bytes long\n", fi.Size())
+		// fi, _ := parser.reader.FileStat()
+		// fmt.Printf("The file is %d bytes long\n", fi.Size())
 
 		// fmt.Println("Read lines to token 'trailer'", lines)
 		err := errors.New("Cannot read end of xref table")
@@ -270,7 +282,7 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 	for _, lineBytes := range lines {
 		// fmt.Println("Xref table line:", lineBytes)
 		line := strings.TrimSpace(string(lineBytes))
-		fmt.Println("Reading xref table line:", line)
+		// fmt.Println("Reading xref table line:", line)
 		if line != "" {
 			if line == "xref" {
 				continue
@@ -310,11 +322,14 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 
 	// read the trailer dictionary
 	trailerPeekTokens := parser.reader.PeekTokens(16)
-
+	parser.reader.SkipToken()
+	// trailerPeek := parser.reader.Peek(100)
 	trailerValue := parser.readValue()
+
 	trailer, ok := trailerValue.(Dictionary)
 	if !ok {
-		fmt.Println("Trailer peek:", trailerPeekTokens)
+		// fmt.Println("Trailer peek:", string(trailerPeek))
+		fmt.Println("Trailer peek tokens:", trailerPeekTokens)
 		fmt.Println("Trailer:", trailerValue)
 		err := errors.New("Trailer not a dictionary")
 		parser.SetError(err)
@@ -322,11 +337,11 @@ func (parser *PDFParser) readXrefTable(offset int64) {
 
 	// process the trailer
 	if parser.xref.trailer == nil {
-		fmt.Println("Storing trailer data:", trailer)
+		// fmt.Println("Storing trailer data:", trailer)
 		parser.xref.trailer = trailer
 	}
 
-	fmt.Println("Xref table:", fmt.Sprintf("%v", parser.xref))
+	// fmt.Println("Xref table:", fmt.Sprintf("%v", parser.xref))
 
 	// return nil
 }
