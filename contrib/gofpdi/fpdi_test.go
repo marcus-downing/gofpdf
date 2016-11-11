@@ -91,7 +91,7 @@ func TestTokenParser(t *testing.T) {
 // ExampleRead tests the ability to read an existing PDF file
 // and use a page of it as a template in another file
 func ExampleRead() {
-	filename := example.Filename("Fpdf_AddPage")
+	filename := example.Filename("basic")
 
 	// force the test to fail after 10 seconds
 	go func() {
