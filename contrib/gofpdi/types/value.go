@@ -89,6 +89,10 @@ func (t Token) ToString() String {
 	return String(str)
 }
 
+type PDFDictionary interface {
+	Get(key string) (Value, bool)
+}
+
 // Dictionary is a mapping from names to values
 type Dictionary map[string]Value
 
@@ -123,9 +127,10 @@ func (d Dictionary) ToString() String {
 }
 
 // Get a value from the dictionary
-// func (d Dictionary) Get(key string) Value {
-
-// }
+func (d Dictionary) Get(key string) (Value, bool) {
+	v, b := d[key]
+	return v, b
+}
 
 // String is a string value
 type String string
@@ -448,16 +453,16 @@ func (r ObjectDeclaration) Type() ValueType {
 }
 
 // GetParam looks up values in an object's dictionary (if it has one)
-func (r ObjectDeclaration) GetParam(key string) Value {
+func (r ObjectDeclaration) Get(key string) (Value, bool) {
 	for _, v := range r.Values {
 		if v.Type() == TypeDictionary {
 			d := v.(Dictionary)
 			if value, ok := d[key]; ok {
-				return value
+				return value, true
 			}
 		}
 	}
-	return nil
+	return nil, false
 }
 
 // GetDictionary picks an object's dictionary out of its value set (if it has one)

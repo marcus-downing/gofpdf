@@ -63,11 +63,26 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 		return nil, err
 	}
 	parser.readXrefTable(offset)
+	fmt.Printf("Xref trailer: %v\n", parser.xref.trailer)
 
 	// check for encryption
-	// parser.checkEncryption()
+	if _, ok := parser.xref.trailer["/Encrypt"]; ok {
+		parser.SetError(errors.New("File is encrypted!"))
+	}
 
-	// read root
+	// read root object
+	rootRef := parser.xref.trailer["/Root"]
+	fmt.Printf("Root ref: %v\n", rootRef)
+	rootObj := parser.resolveObject(rootRef)
+	if rootObj == nil {
+		parser.SetError(errors.New("Cannot load root object!"))
+	} else {
+		parser.root = *rootObj
+	}
+	fmt.Printf("Root: %v\n", parser.root)
+
+	// read pages
+	// pagesRef := 
 	// pagesDictionary := parser.resolveObject("/Pages")
 
 	if err := parser.Error(); err != nil {
@@ -83,6 +98,7 @@ type PDFParser struct {
 	pageNumber      int             // the current page number
 	lastUsedPageBox string          // the most recently used page box
 	pages           []PDFPage       // already loaded pages
+	root            ObjectDeclaration      // the root object
 
 	xref struct {
 		maxObject    int                 // the highest xref object number
@@ -124,8 +140,13 @@ func (parser *PDFParser) Close() {
 
 // PDFPage is a page extracted from an existing PDF document
 type PDFPage struct {
-	Dictionary
+	ObjectDeclaration
 	Number int
+}
+
+func (page *PDFPage) Get(key string) (Value, bool) {
+	v, b := page.ObjectDeclaration.Get(key)
+	return v, b
 }
 
 // GetPageBoxes gets the all the bounding boxes for a given page
@@ -196,7 +217,7 @@ func (parser *PDFParser) getPageBox(page PDFPage, boxIndex string, k float64) *P
 
 	// page = parser.resolveObject(page)
 
-	if box, ok := page.Dictionary[boxIndex]; ok {
+	if box, ok := page.Get(boxIndex); ok {
 		if boxRef, ok := box.(ObjectRef); ok {
 			box = parser.resolveObject(boxRef)
 		}
@@ -222,9 +243,9 @@ func (parser *PDFParser) getPageBox(page PDFPage, boxIndex string, k float64) *P
 		}
 
 	}
-	if parent, ok := page.Dictionary["/Parent"]; ok {
+	if parent, ok := page.Get("/Parent"); ok {
 		parent := parser.resolveObject(parent)
-		parentPage := PDFPage{parent, 0}
+		parentPage := PDFPage{*parent, 0}
 		return parser.getPageBox(parentPage, boxIndex, k)
 	}
 	return nil
@@ -359,7 +380,7 @@ func (parser *PDFParser) readValue() Value {
 		// This is a hex value
 		// Read the value, then the terminator
 		bytes, _ := parser.reader.ReadBytesToToken(Token(">"))
-		fmt.Println("Read hex:", bytes)
+		// fmt.Println("Read hex:", bytes)
 		return Hex(bytes)
 
 	case "<<":
@@ -367,14 +388,17 @@ func (parser *PDFParser) readValue() Value {
 		// Recurse into this function until we reach
 		// the end of the dictionary.
 		result := make(map[string]Value, 32)
+		// fmt.Println("Reading dictionary")
 		for key := parser.reader.ReadToken(); !key.Equals(Token(">>")); key = parser.reader.ReadToken() {
 			if key == nil {
 				return nil // ?
 			}
+			// fmt.Println("Next dictionary value peek:", string(parser.reader.Peek(20)))
 			value := parser.readValue()
 			if value == nil {
 				return nil // ?
 			}
+			// fmt.Printf("Storing dictionary value: %s = %v\n", key.String(), value)
 			// Catch missing value
 			if value.Equals(Token(">>")) {
 				result[key.String()] = value
@@ -382,6 +406,7 @@ func (parser *PDFParser) readValue() Value {
 			}
 			result[key.String()] = value
 		}
+		// fmt.Println("Dictionary:", result)
 		return Dictionary(result)
 
 	case "[":
@@ -433,12 +458,13 @@ func (parser *PDFParser) readValue() Value {
 		}
 
 		// TODO get the stream length
-		lengthObj := parser.currentObject.GetParam("/Length")
-		if lengthObj.Type() == TypeObjRef {
+		var length int = 0
+		if lengthObj, ok := parser.currentObject.Get("/Length"); ok && lengthObj.Type() == TypeObjRef {
 			lengthObj = parser.resolveObject(lengthObj)
+			length = int(lengthObj.ToNumeric().ToInt64()) // lengthObj[1] ???
+		} else {
+			parser.SetError(errors.New("Stream has no length"))
 		}
-		length := int(lengthObj.ToNumeric().ToInt64()) // lengthObj[1] ???
-
 		stream, _ := parser.reader.ReadBytes(length)
 
 		if endstream := parser.reader.ReadToken(); endstream.Equals(Token("endstream")) {
@@ -449,14 +475,16 @@ func (parser *PDFParser) readValue() Value {
 		return Stream{parser.currentObject.GetDictionary(), stream}
 	}
 
-	if real, err := strconv.ParseFloat(str, 64); err != nil {
-		return Real(real)
-	}
-	if number, err := strconv.Atoi(str); err != nil {
+	// fmt.Println("Parsing token in case it's a number:", str)
+	if number, err := strconv.Atoi(str); err == nil {
+		// fmt.Println("First number token:", number)
+		// fmt.Println("More tokens:", parser.reader.PeekTokens(2))
 		// A numeric token. Make sure that
 		// it is not part of something else.
 		if moreTokens := parser.reader.PeekTokens(2); len(moreTokens) == 2 {
-			if number2, err := strconv.Atoi(string(moreTokens[0])); err != nil {
+			if number2, err := strconv.Atoi(string(moreTokens[0])); err == nil {
+				// fmt.Println("Second number token:", number2)
+				// fmt.Println("Third token", moreTokens[1])
 				// Two numeric tokens in a row.
 				// In this case, we're probably in
 				// front of either an object reference
@@ -466,8 +494,21 @@ func (parser *PDFParser) readValue() Value {
 				case "obj":
 					parser.reader.ReadTokens(2)
 					objectRef := ObjectRef{number, number2}
+					// fmt.Println("Reading values for object:", objectRef)
 					values := make([]Value, 0, 2) // ???
+					// dictionary := parser.readValue()
 					// values := Dictionary{}
+					for i := 1; i < 10; i++ {
+						value := parser.readValue()
+						fmt.Println("Value:", value)
+						if value == nil {
+							break
+						}
+						if tokenValue, ok := value.(Token); ok && tokenValue.String() == "endobj" {
+							break
+						}
+						values = append(values, value)
+					}
 					return ObjectDeclaration{objectRef, values}
 				case "R":
 					parser.reader.ReadTokens(2)
@@ -476,7 +517,12 @@ func (parser *PDFParser) readValue() Value {
 			}
 		}
 
+		// fmt.Println("Numeric value:", number)
 		return Numeric(number)
+	}
+	if real, err := strconv.ParseFloat(str, 64); err == nil {
+		// fmt.Println("Real value:", real)
+		return Real(real)
 	}
 	if str == "true" {
 		return Boolean(true)
@@ -488,10 +534,11 @@ func (parser *PDFParser) readValue() Value {
 		return Null(struct{}{})
 	}
 	// Just a token. Return it.
+	// fmt.Println("Token value", token)
 	return token
 }
 
-func (parser *PDFParser) resolveObject(spec Value) Dictionary {
+func (parser *PDFParser) resolveObject(spec Value) *ObjectDeclaration {
 	// Exit if we get invalid data
 	if spec == nil {
 		return nil
@@ -500,8 +547,18 @@ func (parser *PDFParser) resolveObject(spec Value) Dictionary {
 	if objRef, ok := spec.(ObjectRef); ok {
 		// This is a reference, resolve it
 		if offset, ok := parser.xref.xref[objRef]; ok {
+			// fmt.Println("Resolve ref at offset:", offset)
 			parser.reader.Seek(offset, 0)
-			header := parser.readValue()
+			// fmt.Println("Peek:", string(parser.reader.Peek(100)))
+			obj := parser.readValue()
+			// fmt.Println("Reader object value:", obj)
+			if objDecl, ok := obj.(ObjectDeclaration); ok {
+				return &objDecl
+			}
+
+			// so it isn't an object declaration? now what?
+
+			/*
 			if header != objRef {
 				toSearchFor := Token(fmt.Sprintf("%d %d obj", objRef.Obj, objRef.Gen))
 				if parser.reader.SkipToToken(toSearchFor) {
@@ -537,7 +594,7 @@ func (parser *PDFParser) resolveObject(spec Value) Dictionary {
 			} else {
 				// ?
 			}
-
+*/
 			// Reset to the start
 			// parser.reader.Seek(???)
 
@@ -547,8 +604,8 @@ func (parser *PDFParser) resolveObject(spec Value) Dictionary {
 		}
 	}
 
-	if obj, ok := spec.(Dictionary); ok {
-		return obj
+	if obj, ok := spec.(ObjectDeclaration); ok {
+		return &obj
 	}
 
 	// Er, it's a what now?
