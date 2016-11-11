@@ -16,22 +16,56 @@ const (
 
 const (
 	// MediaBox is a bounding box that includes bleed area and crop marks
-	MediaBox = "MediaBox"
+	MediaBox = "/MediaBox"
 
 	// CropBox is a bounding bos that denotes the area the page should be cropped for display
-	CropBox = "CropBox"
+	CropBox = "/CropBox"
 
 	// BleedBox is a bounding box that includes bleed area
-	BleedBox = "BleedBox"
+	BleedBox = "/BleedBox"
 
 	// TrimBox is a bounding box that dentoes the area the page should be trimmed for printing
-	TrimBox = "TrimBox"
+	TrimBox = "/TrimBox"
 
 	// ArtBox is a bounding bxo that denotes an interesting part of the page
-	ArtBox = "ArtBox"
+	ArtBox = "/ArtBox"
 
 	// DefaultBox is the default bounding box to use
 	DefaultBox = CropBox
+)
+
+var AvailableBoxes []string = []string{MediaBox, CropBox, BleedBox, TrimBox, ArtBox}
+
+const (
+	// RootRef is the key of the root object
+	RootRef = "/Root"
+
+	// InfoRef is the key of the document info dictionary
+	InfoRef = "/Info"
+
+	// CatalogRef is the key of the catalog object which lists PDF contents
+	CatalogRef = "/Catalog"
+
+	// PagesRef is the key of the pages object that lists pages
+	PagesRef = "/Pages"
+
+	// KidsRef is the key of the value that lists object children
+	KidsRef = "/Kids"
+
+	// ParentRef is they key of the value that identifies object parent
+	ParentRef = "/Parent"
+
+	// EncryptRef is they key of the encryption value
+	EncryptRef = "/Encrypt"
+
+	// LengthRef is the key of the stream length value
+	LengthRef = "/Length"
+
+	// FilterRef is the key of the stream filter value
+	FilterRef = "/Filter"
+
+	// CountRef is the key of the page count value
+	CountRef = "/Count"
 )
 
 

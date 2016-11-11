@@ -89,6 +89,7 @@ func (t Token) ToString() String {
 	return String(str)
 }
 
+// PDFDictionary is any object that returns PDF values like a dictionary
 type PDFDictionary interface {
 	Get(key string) (Value, bool)
 }
@@ -453,7 +454,7 @@ func (r ObjectDeclaration) Type() ValueType {
 }
 
 // GetParam looks up values in an object's dictionary (if it has one)
-func (r ObjectDeclaration) Get(key string) (Value, bool) {
+func (r *ObjectDeclaration) Get(key string) (Value, bool) {
 	for _, v := range r.Values {
 		if v.Type() == TypeDictionary {
 			d := v.(Dictionary)
@@ -473,6 +474,16 @@ func (r ObjectDeclaration) GetDictionary() Dictionary {
 		}
 	}
 	return Dictionary(map[string]Value{})
+}
+
+func (r ObjectDeclaration) GetStream() *Stream {
+	for _, v := range r.Values {
+		if v.Type() == TypeStream {
+			stream := v.(Stream)
+			return &stream
+		}
+	}
+	return nil
 }
 
 // Equals checks if the value is also null

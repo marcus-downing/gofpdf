@@ -1,4 +1,4 @@
-package gofpdi
+package readpdf
 
 /*
  * Copyright (c) 2015 Kurt Jung (Gmail: kurt.w.jung),
@@ -22,13 +22,12 @@ import (
 	"os"
 	"strings"
 	// "regexp"
-	"math"
+	// "math"
 	"bytes"
 	"strconv"
 	// "bufio"
 	"errors"
-	"github.com/jung-kurt/gofpdf"
-	"github.com/jung-kurt/gofpdf/contrib/gofpdi/readpdf"
+	// "github.com/jung-kurt/gofpdf"
 	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
 )
 
@@ -47,14 +46,14 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 	filesize := stat.Size()
 
 	// fmt.Println("Opening PDF file:", filename)
-	reader, err := readpdf.NewTokenReader(file, filesize)
+	reader, err := NewTokenReader(file, filesize)
 	if err != nil {
 		return nil, err
 	}
 
 	parser := new(PDFParser)
 	parser.reader = reader
-	parser.pageNumber = 0
+	// parser.pageNumber = 0
 	parser.lastUsedPageBox = DefaultBox
 
 	// read xref data
@@ -63,27 +62,27 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 		return nil, err
 	}
 	parser.readXrefTable(offset)
-	fmt.Printf("Xref trailer: %v\n", parser.xref.trailer)
+	// fmt.Printf("Xref trailer: %v\n", parser.xref.trailer)
 
 	// check for encryption
-	if _, ok := parser.xref.trailer["/Encrypt"]; ok {
+	if _, ok := parser.xref.trailer[EncryptRef]; ok {
 		parser.SetError(errors.New("File is encrypted!"))
 	}
 
 	// read root object
-	rootRef := parser.xref.trailer["/Root"]
-	fmt.Printf("Root ref: %v\n", rootRef)
+	rootRef := parser.xref.trailer[RootRef]
+	// fmt.Printf("Root ref: %v\n", rootRef)
 	rootObj := parser.resolveObject(rootRef)
 	if rootObj == nil {
 		parser.SetError(errors.New("Cannot load root object!"))
 	} else {
 		parser.root = *rootObj
 	}
-	fmt.Printf("Root: %v\n", parser.root)
+	// fmt.Printf("Root: %v\n", parser.root)
 
 	// read pages
 	// pagesRef := 
-	// pagesDictionary := parser.resolveObject("/Pages")
+	// pagesDictionary := parser.resolveObject(PageRef)
 
 	if err := parser.Error(); err != nil {
 		return nil, err
@@ -94,10 +93,10 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 // PDFParser is a high-level parser for PDF elements
 // See fpdf_pdf_parser.php
 type PDFParser struct {
-	reader          *readpdf.PDFTokenReader // the underlying token reader
-	pageNumber      int             // the current page number
+	reader          *PDFTokenReader // the underlying token reader
+	// pageNumber      int             // the current page number
 	lastUsedPageBox string          // the most recently used page box
-	pages           []PDFPage       // already loaded pages
+	// pages           []*PDFPageParser       // already loaded pages
 	root            ObjectDeclaration      // the root object
 
 	xref struct {
@@ -129,8 +128,8 @@ func (parser *PDFParser) Error() error {
 	return parser.err
 }
 
-func (parser *PDFParser) setPageNumber(pageNumber int) {
-	parser.pageNumber = pageNumber
+func (parser *PDFParser) GetPDFVersion() string {
+	return parser.reader.PdfVersion
 }
 
 // Close releases references and closes the file handle of the parser
@@ -138,116 +137,65 @@ func (parser *PDFParser) Close() {
 	parser.reader.Close()
 }
 
-// PDFPage is a page extracted from an existing PDF document
-type PDFPage struct {
-	ObjectDeclaration
-	Number int
+func (parser *PDFParser) getRootObject() *ObjectDeclaration {
+	return &parser.root
 }
 
-func (page *PDFPage) Get(key string) (Value, bool) {
-	v, b := page.ObjectDeclaration.Get(key)
-	return v, b
+func (parser *PDFParser) getCatalogObject() *ObjectDeclaration {
+	return &parser.root
+	// if catalogRef, ok := parser.root.Get(CatalogRef); ok {
+	// 	return parser.resolveObject(catalogRef)
+	// } else {
+	// 	fmt.Println("getCatalogObject: no catalog value in root:", parser.root)
+	// }
+	// return nil
 }
 
-// GetPageBoxes gets the all the bounding boxes for a given page
-//
-// pageNumber is 1-indexed
-// k is a scaling factor from user space units to points
-func (parser *PDFParser) GetPageBoxes(pageNumber int, k float64) PageBoxes {
-	boxes := make(map[string]*PageBox, 5)
-	if pageNumber >= len(parser.pages) {
-		return PageBoxes{boxes, DefaultBox}
-	}
-
-	page := parser.pages[pageNumber]
-	if box := parser.getPageBox(page, MediaBox, k); box != nil {
-		boxes[MediaBox] = box
-	}
-	if box := parser.getPageBox(page, CropBox, k); box != nil {
-		boxes[CropBox] = box
-	}
-	if box := parser.getPageBox(page, BleedBox, k); box != nil {
-		boxes[BleedBox] = box
-	}
-	if box := parser.getPageBox(page, TrimBox, k); box != nil {
-		boxes[TrimBox] = box
-	}
-	if box := parser.getPageBox(page, ArtBox, k); box != nil {
-		boxes[ArtBox] = box
-	}
-	return PageBoxes{boxes, DefaultBox}
-}
-
-// getPageBox reads a bounding box from a page.
-//
-// page is a /Page dictionary.
-//
-// k is a scaling factor from user space units to points.
-func (parser *PDFParser) getPageBox(page PDFPage, boxIndex string, k float64) *PageBox {
-	/*
-	   $page = $this->resolveObject($page);
-	   $box = null;
-	   if (isset($page[1][1][$boxIndex])) {
-	       $box = $page[1][1][$boxIndex];
-	   }
-
-	   if (!is_null($box) && $box[0] == pdf_parser::TYPE_OBJREF) {
-	       $tmp_box = $this->resolveObject($box);
-	       $box = $tmp_box[1];
-	   }
-
-	   if (!is_null($box) && $box[0] == pdf_parser::TYPE_ARRAY) {
-	       $b = $box[1];
-	       return array(
-	           'x' => $b[0][1] / $k,
-	           'y' => $b[1][1] / $k,
-	           'w' => abs($b[0][1] - $b[2][1]) / $k,
-	           'h' => abs($b[1][1] - $b[3][1]) / $k,
-	           'llx' => min($b[0][1], $b[2][1]) / $k,
-	           'lly' => min($b[1][1], $b[3][1]) / $k,
-	           'urx' => max($b[0][1], $b[2][1]) / $k,
-	           'ury' => max($b[1][1], $b[3][1]) / $k,
-	       );
-	   } else if (!isset($page[1][1]['/Parent'])) {
-	       return false;
-	   } else {
-	       return $this->_getPageBox($this->resolveObject($page[1][1]['/Parent']), $boxIndex, $k);
-	   }
-	*/
-
-	// page = parser.resolveObject(page)
-
-	if box, ok := page.Get(boxIndex); ok {
-		if boxRef, ok := box.(ObjectRef); ok {
-			box = parser.resolveObject(boxRef)
+func (parser *PDFParser) getPagesObject() *ObjectDeclaration{
+	if catalog := parser.getCatalogObject(); catalog != nil {
+		if pagesRef, ok := catalog.Get(PagesRef); ok {
+			return parser.resolveObject(pagesRef)
 		}
+	} else {
+		fmt.Println("getPagesObject: no catalog")
+	}
+	return nil
+}
 
-		if arr, ok := box.(Array); ok {
-			x := arr[0].ToReal().ToFloat64()
-			y := arr[1].ToReal().ToFloat64()
-			x2 := arr[2].ToReal().ToFloat64()
-			y2 := arr[3].ToReal().ToFloat64()
-			w := math.Abs(x2 - x)
-			h := math.Abs(y2 - y)
-			llx := math.Min(x, x2)
-			lly := math.Min(y, y2)
-			urx := math.Max(x, x2)
-			ury := math.Max(y, y2)
+func (parser *PDFParser) CountPages() int {
+	if pagesObj := parser.getPagesObject(); pagesObj != nil {
+		if count, ok := pagesObj.Get(CountRef); ok && count != nil {
+			return int(count.ToNumeric().ToInt64())
+		} else {
+			fmt.Println("CountPages: no count value")
+		}
+	} else {
+		fmt.Println("CountPages: no pages object")
+	}
+	parser.SetError(errors.New("Unable to read page count"))
+	return 0
+}
 
-			return &PageBox{
-				gofpdf.PointType{x / k, y / k},
-				gofpdf.SizeType{w / k, h / k},
-				gofpdf.PointType{llx / k, lly / k},
-				gofpdf.PointType{urx / k, ury / k},
+// GetPageParser constucts a PDFPageParser for the given page number
+func (parser *PDFParser) GetPageParser(number int) *PDFPageParser {
+	// find the object associated with this page
+
+	if pagesObj := parser.getPagesObject(); pagesObj != nil {
+		if kids, ok := pagesObj.Get(KidsRef); ok && kids != nil {
+			if kidsArray, ok := kids.(Array); ok {
+				if number <= len(kidsArray) {
+					pageRef := kidsArray[number - 1]
+					pageObj := parser.resolveObject(pageRef)
+					if pageObj != nil {
+						page := PDFPageParser{pageObj, parser, number}
+						return &page
+					}
+				}
 			}
 		}
+	}
 
-	}
-	if parent, ok := page.Get("/Parent"); ok {
-		parent := parser.resolveObject(parent)
-		parentPage := PDFPage{*parent, 0}
-		return parser.getPageBox(parentPage, boxIndex, k)
-	}
+	parser.SetError(errors.New("Unable to read page object"))
 	return nil
 }
 
@@ -451,7 +399,7 @@ func (parser *PDFParser) readValue() Value {
 		// ensure line breaks in front of the stream
 		peek := parser.reader.Peek(32)
 		for _, c := range peek {
-			if !readpdf.IsPdfWhitespace(c) {
+			if !IsPdfWhitespace(c) {
 				break
 			}
 			parser.reader.ReadByte()
@@ -459,7 +407,7 @@ func (parser *PDFParser) readValue() Value {
 
 		// TODO get the stream length
 		var length int = 0
-		if lengthObj, ok := parser.currentObject.Get("/Length"); ok && lengthObj.Type() == TypeObjRef {
+		if lengthObj, ok := parser.currentObject.Get(LengthRef); ok && lengthObj.Type() == TypeObjRef {
 			lengthObj = parser.resolveObject(lengthObj)
 			length = int(lengthObj.ToNumeric().ToInt64()) // lengthObj[1] ???
 		} else {
@@ -500,7 +448,7 @@ func (parser *PDFParser) readValue() Value {
 					// values := Dictionary{}
 					for i := 1; i < 10; i++ {
 						value := parser.readValue()
-						fmt.Println("Value:", value)
+						// fmt.Println("Value:", value)
 						if value == nil {
 							break
 						}
@@ -615,7 +563,7 @@ func (parser *PDFParser) resolveObject(spec Value) *ObjectDeclaration {
 
 func (parser *PDFParser) unfilterStream(s Stream) Stream {
 	filters := make([]StreamFilter, 8)
-	if filter, ok := s.Parameters["/Filter"]; ok {
+	if filter, ok := s.Parameters[FilterRef]; ok {
 		if objRef, ok := filter.(ObjectRef); ok {
 			filter = parser.resolveObject(objRef)
 		}
@@ -628,9 +576,7 @@ func (parser *PDFParser) unfilterStream(s Stream) Stream {
 			streamFilter := GetStreamFilter(filterName)
 			filters = append(filters, streamFilter)
 		}
-		// return s
 	}
-	// I appear to be missing something...
 
 	var stream Stream = s
 	for _, filter := range filters {

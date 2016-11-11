@@ -18,77 +18,91 @@ package gofpdi
  */
 
 import (
-	// "fmt"
+	"fmt"
 	// "math"
+ 	"errors"
 	// "strconv"
 	"github.com/jung-kurt/gofpdf"
 	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
+	"github.com/jung-kurt/gofpdf/contrib/gofpdi/readpdf"
 )
 
 // Open makes an existing PDF file usable for templates
 func Open(filename string) (*Fpdi, error) {
-	parser, err := OpenPDFParser(filename)
+	parser, err := readpdf.OpenPDFParser(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	td := new(Fpdi)
-	td.parser = parser
-	td.pdfVersion = td.parser.reader.PdfVersion
+	fpdi := new(Fpdi)
+	fpdi.parser = parser
+	fpdi.pdfVersion = fpdi.parser.GetPDFVersion()
 
+	fpdi.numPages = parser.CountPages()
+	fmt.Println("Num pages:", fpdi.numPages)
 	// td.k = ???
 	// ???
 
-	return td, nil
+	return fpdi, nil
 }
 
 // Fpdi represents a PDF file parser which can load templates to use in other documents
 type Fpdi struct {
 	numPages        int        // the number of pages in the PDF cocument
 	lastUsedPageBox string     // the most recently used value of boxName
-	parser          *PDFParser // the actual document reader
+	parser          *readpdf.PDFParser // the actual document reader
 	pdfVersion      string     // the PDF version
 	k               float64    // default scale factor (number of points in user unit)
 }
 
 // Error returns the internal parser error; this will be nil if no error has occurred.
-func (f *Fpdi) Error() error {
-	return f.parser.Error()
+func (fpdi *Fpdi) Error() error {
+	return fpdi.parser.Error()
 }
 
 // CountPages returns the number of pages in this source document
-func (td *Fpdi) CountPages() int {
-	return td.numPages
+func (fpdi *Fpdi) CountPages() int {
+	return fpdi.numPages
 }
 
 // Page imports a single page of the source document using default settings
-func (td *Fpdi) Page(pageNumber int) gofpdf.Template {
-	return td.ImportPage(pageNumber, DefaultBox, false)
+func (fpdi *Fpdi) Page(pageNumber int) gofpdf.Template {
+	return fpdi.ImportPage(pageNumber, DefaultBox, false)
 }
 
 // ImportPage imports a single page of the source document to use as a template in another document
-func (td *Fpdi) ImportPage(pageNumber int, boxName string, groupXObject bool) gofpdf.Template {
+func (fpdi *Fpdi) ImportPage(pageNumber int, boxName string, groupXObject bool) gofpdf.Template {
+	if pageNumber > fpdi.numPages {
+		fpdi.parser.SetError(errors.New("Page does not exist"))
+		return nil
+	}
 	if boxName == "" {
 		boxName = DefaultBox
 	}
-	td.parser.setPageNumber(pageNumber)
+
+	page := fpdi.parser.GetPageParser(pageNumber)
 
 	t := new(TemplatePage)
 	t.id = gofpdf.GenerateTemplateID()
 
-	pageBoxes := td.parser.GetPageBoxes(pageNumber, td.k)
-	_ /*pageBox*/ = pageBoxes.Get(boxName)
-	td.lastUsedPageBox = pageBoxes.LastUsedPageBox
+	pageBoxes := page.GetPageBoxes(fpdi.k)
+	pageBox := pageBoxes.Get(boxName)
+	t.pageSize = pageBox.SizeType
+	fpdi.lastUsedPageBox = pageBoxes.LastUsedPageBox
+
+	t.bytes = page.Bytes()
+	t.images = page.Images()
+	t.templates = page.Templates()
 
 	return t
 }
 
 // GetLastUsedPageBox returns the last used page boundary box.
-func (td *Fpdi) GetLastUsedPageBox() string {
-	return td.lastUsedPageBox
+func (fpdi *Fpdi) GetLastUsedPageBox() string {
+	return fpdi.lastUsedPageBox
 }
 
 // Close releases references and closes the file handle of the parser
-func (td *Fpdi) Close() {
-	td.parser.Close()
+func (fpdi *Fpdi) Close() {
+	fpdi.parser.Close()
 }

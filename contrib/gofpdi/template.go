@@ -26,6 +26,9 @@ type TemplatePage struct {
 	id       int64           // a unique template ID
 	pageSize gofpdf.SizeType // the size of the page
 	k        float64         // scale factor (number of points in user unit)
+	bytes    []byte          // the actual page data bytes
+	images   map[string]*gofpdf.ImageInfoType // any images used in this template
+	templates []gofpdf.Template // any other templates used in this template
 }
 
 // ID returns the global template identifier
@@ -40,15 +43,15 @@ func (t *TemplatePage) Size() (gofpdf.PointType, gofpdf.SizeType) {
 
 // Bytes returns the actual template data, not including resources
 func (t *TemplatePage) Bytes() []byte {
-	return nil
+	return t.bytes
 }
 
 // Images returns a list of the images used by this template
 func (t *TemplatePage) Images() map[string]*gofpdf.ImageInfoType {
-	return nil
+	return t.images
 }
 
 // Templates returns a list of templates used within this template
 func (t *TemplatePage) Templates() []gofpdf.Template {
-	return nil
+	return t.templates
 }
