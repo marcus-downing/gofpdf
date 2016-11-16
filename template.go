@@ -105,13 +105,14 @@ type Template interface {
 	ID() int64
 	Size() (PointType, SizeType)
 	Bytes() []byte
+	Fonts() map[string]FontDefType
 	Images() map[string]*ImageInfoType
 	Templates() []Template
 }
 
 func (f *Fpdf) templateFontCatalog() {
 	var keyList []string
-	var font fontDefType
+	var font FontDefType
 	var key string
 	f.out("/Font <<")
 	for key = range f.fonts {

@@ -3,8 +3,8 @@ package types
 import (
 	"bytes"
 	// "fmt"
-	"regexp"
 	"math"
+	"regexp"
 	"strconv"
 )
 
@@ -220,6 +220,7 @@ func (h Hex) ToString() String {
 
 // Numeric is an integer value
 type Numeric int64
+
 var Numeric_NaN Numeric = 0
 
 // Type of a Numeric value
@@ -254,9 +255,9 @@ func (n Numeric) ToString() String {
 	return String(str)
 }
 
-
 // Real is a floating-point value
 type Real float64
+
 var Real_NaN Real = Real(math.NaN())
 
 // Type of a Real value
@@ -323,7 +324,7 @@ func (b Boolean) ToReal() Real {
 }
 
 // ToString converts a value to a String value
-func (b  Boolean) ToString() String {
+func (b Boolean) ToString() String {
 	if b {
 		return "true"
 	} else {
@@ -511,7 +512,7 @@ func (r ObjectDeclaration) ToString() String {
 
 // Stream is a blob value
 type Stream struct {
-	Parameters Dictionary
+	Parameters *Dictionary
 	Bytes      []byte
 }
 
@@ -524,6 +525,11 @@ func (s Stream) Type() ValueType {
 func (s Stream) Equals(v Value) bool {
 	s2, ok := v.(Stream)
 	return ok && bytes.Equal(s.Bytes, s2.Bytes)
+}
+
+func (s Stream) Get(key string) (Value, bool) {
+	v, ok := s.Parameters.Get(key)
+	return v, ok
 }
 
 // ToNumeric converts a value to a Numeric value

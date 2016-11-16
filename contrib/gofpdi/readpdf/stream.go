@@ -16,7 +16,7 @@ package readpdf
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
- 
+
 import (
 	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
 )

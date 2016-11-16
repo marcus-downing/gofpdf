@@ -7,12 +7,10 @@ import (
 	"github.com/jung-kurt/gofpdf"
 )
 
-
 const (
 	// DefaultPdfVersion is the format version to assume files are until told otherwise
 	DefaultPdfVersion = "1.3"
 )
-
 
 const (
 	// MediaBox is a bounding box that includes bleed area and crop marks
@@ -37,37 +35,24 @@ const (
 var AvailableBoxes []string = []string{MediaBox, CropBox, BleedBox, TrimBox, ArtBox}
 
 const (
-	// RootRef is the key of the root object
-	RootRef = "/Root"
-
-	// InfoRef is the key of the document info dictionary
-	InfoRef = "/Info"
-
-	// CatalogRef is the key of the catalog object which lists PDF contents
-	CatalogRef = "/Catalog"
-
-	// PagesRef is the key of the pages object that lists pages
-	PagesRef = "/Pages"
-
-	// KidsRef is the key of the value that lists object children
-	KidsRef = "/Kids"
-
-	// ParentRef is they key of the value that identifies object parent
-	ParentRef = "/Parent"
-
-	// EncryptRef is they key of the encryption value
-	EncryptRef = "/Encrypt"
-
-	// LengthRef is the key of the stream length value
-	LengthRef = "/Length"
-
-	// FilterRef is the key of the stream filter value
-	FilterRef = "/Filter"
-
-	// CountRef is the key of the page count value
-	CountRef = "/Count"
+	RootRef      = "/Root"      // RootRef is the key of the root object
+	InfoRef      = "/Info"      // InfoRef is the key of the document info dictionary
+	CatalogRef   = "/Catalog"   // CatalogRef is the key of the catalog object which lists PDF contents
+	PagesRef     = "/Pages"     // PagesRef is the key of the pages object that lists pages
+	KidsRef      = "/Kids"      // KidsRef is the key of the value that lists object children
+	ParentRef    = "/Parent"    // ParentRef is they key of the value that identifies object parent
+	EncryptRef   = "/Encrypt"   // EncryptRef is they key of the encryption value
+	LengthRef    = "/Length"    // LengthRef is the key of the stream length value
+	FilterRef    = "/Filter"    // FilterRef is the key of the stream filter value
+	CountRef     = "/Count"     // CountRef is the key of the page count value
+	ContentsRef  = "/Contents"  // ContentsRef is the key of the page's content stream
+	ResourcesRef = "/Resources" // ResourcesRef is the key to a page's resource set
+	TypeRef      = "/Type"      // TypeRef is the key defining a dictionary's type
+	SubtypeRef   = "/Subtype"   // SubtypeRef is the key of a dictionary's subtype 
+	FontRef      = "/Font"      // FontRef is the key to a font definition list
+	BaseFontRef  = "/BaseFont"  // BaseFontRef is the key to a font's base font name
+	EncodingRef  = "/Encoding"  // EncodingRef is they key of a font's encoding scheme
 )
-
 
 // PageBox is the bounding box for a page
 type PageBox struct {

@@ -24,9 +24,9 @@ import (
 	"fmt"
 	"io"
 	// "os"
+	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
 	"regexp"
 	"strconv"
-	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
 )
 
 const (
@@ -37,14 +37,14 @@ const (
 // PDFTokenReader is a low-level reader for the tokens in a PDF file
 // See pdf_parser.php and pdf_context.php
 type PDFTokenReader struct {
-	in         io.Reader          // the file or other source being read
-	filesize   int64
-	scanner    *SwitchingScanner  // the file scanner
+	in       io.Reader // the file or other source being read
+	filesize int64
+	scanner  *SwitchingScanner // the file scanner
 	// scanner       MutantScanner
 	// scanner    *bufio.Scanner // a syntax-specific tokenizer
-	stack      []Token        // a stack of pre-read tokens
-	lineEnding []byte         // the type of line ending this file uses
-	PdfVersion string         // the version header
+	stack      []Token // a stack of pre-read tokens
+	lineEnding []byte  // the type of line ending this file uses
+	PdfVersion string  // the version header
 	// splitter   byte           // how was it last split
 }
 
@@ -118,7 +118,6 @@ func (reader *PDFTokenReader) splitOnBytes() {
 	reader.scanner.Split(splitBytes)
 }
 
-
 // dropCR drops a terminal \r from the data.
 func dropCR(data []byte) []byte {
 	if len(data) > 0 && data[len(data)-1] == '\r' {
@@ -173,10 +172,11 @@ func splitPeek(n int, into *[]byte) func([]byte, bool) (advance int, token []byt
 
 // splitNext reads up to a fixed number of bytes.
 func splitNext(n int) func([]byte, bool) (advance int, token []byte, err error) {
-	// fmt.Println("splitNext: split on", n, "bytes")
+	// fmt.Fprintf(os.Stderr, "splitNext: split on %d bytes\n", n)
 	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		// fmt.Fprintf(os.Stderr, "splitNext: data [%s], %t\n", string(data), atEOF)
 		if atEOF && len(data) == 0 {
-			// fmt.Println("splitNext: at EOF")
+			// fmt.Fprintf(os.Stderr, "splitNext: at EOF\n")
 			return 0, nil, io.EOF
 		}
 
@@ -184,17 +184,17 @@ func splitNext(n int) func([]byte, bool) (advance int, token []byte, err error) 
 		ld := len(data)
 		if ld < n && !atEOF {
 			// request more data
-			// fmt.Println("splitNext: need more, we only have", len(data), "bytes")
+			// fmt.Fprintf(os.Stderr, "splitNext: need more, we only have %d bytes\n", len(data))
 			return 0, nil, nil
 		}
 
 		// return as much as we can
 		sb := n
 		if sb > ld {
-			// fmt.Println("splitNext: we can only get", ld, "bytes")
+			// fmt.Fprintf(os.Stderr, "splitNext: we can only get %d bytes\n", ld)
 			sb = ld
 		}
-		// fmt.Println("splitNext: returning", sb, "bytes")
+		// fmt.Fprintf(os.Stderr, "splitNext: returning %d bytes\n", sb)
 		return sb, data[0:sb], nil
 	}
 }
@@ -241,7 +241,6 @@ func splitBytes(data []byte, atEOF bool) (advance int, token []byte, err error) 
 	return 1, data[0:1], nil
 }
 
-
 // splitPeekTokens returns
 func splitPeekTokens(n int, into *[]Token) func([]byte, bool) (advance int, token []byte, err error) {
 	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
@@ -254,7 +253,7 @@ func splitPeekTokens(n int, into *[]Token) func([]byte, bool) (advance int, toke
 		// we don't actually know how much we'll need, but 4n is a safe bet
 		// and it's cheaper to make this request before trying to extract
 		// enough tokens and finding we've run out of buffer.
-		if len(data) < (n * 4) && !atEOF {
+		if len(data) < (n*4) && !atEOF {
 			// fmt.Printf("splitPeekTokens: len(data) = %d, n = %d\n", len(data), n)
 			// fmt.Println("splitPeekTokens: more")
 			return 0, nil, nil
@@ -314,7 +313,6 @@ func splitTokens(data []byte, atEOF bool) (advance int, token []byte, err error)
 		return whitespace, nil, nil
 	}
 	// os.Stderr.WriteString(fmt.Sprintf("Data length: %d bytes, offset: %d, data: %v\n", len(data), whitespace, data[0:6]))
-	
 
 	// otherwise just advance over the whitespace without returning a token
 	// if offset > 0 {
@@ -335,7 +333,7 @@ func splitTokens(data []byte, atEOF bool) (advance int, token []byte, err error)
 		// os.Stderr.WriteString("Scanner: string or array\n")
 		// This is either an array or literal string delimiter, return it
 		// fmt.Printf("Array or string token: advance = 1, token = '%s', err = nil\n", string([]byte{b}))
-		return whitespace+1, []byte{b}, nil
+		return whitespace + 1, []byte{b}, nil
 
 	case 0x3C, // <
 		0x3E: // >
@@ -346,17 +344,17 @@ func splitTokens(data []byte, atEOF bool) (advance int, token []byte, err error)
 		// fmt.Println("Checking dictionary or hex token:", string(b), string(b2))
 		if b2 == b {
 			// fmt.Printf("Dictionary token: advance = 2, token = '%s', err = nil\n", string([]byte{b,b2}))
-			return whitespace+2, []byte{b,b2}, nil
+			return whitespace + 2, []byte{b, b2}, nil
 		}
 		// fmt.Printf("Hex token: advance = 1, token = '%s', err = nil\n", string([]byte{b}))
-		return whitespace+1, []byte{b}, nil
+		return whitespace + 1, []byte{b}, nil
 
 	case 0x25: // %
 		// This is a comment - jump over it!
 		// os.Stderr.WriteString("Scanner: comment\n")
 		a, token, err := bufio.ScanLines(data2, atEOF)
 		// fmt.Println("Comment token: advance = %d, token = '%s', err = %v", a, token, err)
-		return whitespace+a, token, err
+		return whitespace + a, token, err
 	}
 
 	// This is another type of token (probably a dictionary entry or a numeric value). Find the end and return it.
@@ -368,7 +366,7 @@ func splitTokens(data []byte, atEOF bool) (advance int, token []byte, err error)
 	token = data2[0:nextToken]
 	// os.Stderr.WriteString(fmt.Sprintf("Token: advance = %d, token = %s, err = %v\n", nextToken, string(token), err))
 	// fmt.Printf("Token: advance = %d, token = '%s', err = %v\n", nextToken, string(token), err)
-	return whitespace+nextToken, token, nil
+	return whitespace + nextToken, token, nil
 }
 
 func IsPdfWhitespace(b byte) bool {
@@ -582,12 +580,17 @@ func (reader *PDFTokenReader) ReadBytesToToken(token Token) ([]byte, bool) {
 
 // ReadBytes reads up to a fixed number of bytes
 func (reader *PDFTokenReader) ReadBytes(n int) ([]byte, bool) {
+	// fmt.Println("ReadBytes(",n,")")
 	reader.splitNext(n)
 
 	buf := bytes.NewBuffer([]byte{})
-	for reader.scanner.Scan() {
+	// fmt.Println("ReadBytes: scanning")
+	for buf.Len() < n && reader.scanner.Scan() {
+		// fmt.Println("ReadBytes: getting bytes")
 		buf.Write(reader.scanner.Bytes())
+		// fmt.Println("ReadBytes: scanning")
 	}
+	// fmt.Println("ReadBytes: done")
 	return buf.Bytes(), reader.scanner.Err() != nil
 }
 

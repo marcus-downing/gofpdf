@@ -11,8 +11,8 @@ import (
 	"bufio"
 	// "bytes"
 	"strings"
-	"time"
 	"testing"
+	"time"
 )
 
 func TestSwitchingScanner(t *testing.T) {

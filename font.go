@@ -332,7 +332,7 @@ func makeFontEncoding(encList encListType, refEncFileStr string) (diffStr string
 }
 
 func makeDefinitionFile(fileStr, tpStr, encodingFileStr string, embed bool, encList encListType, info fontInfoType) (err error) {
-	var def fontDefType
+	var def FontDefType
 	def.Tp = tpStr
 	def.Name = info.FontName
 	makeFontDescriptor(&info)

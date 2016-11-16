@@ -16,11 +16,11 @@ package readpdf
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
- 
+
 import (
 	// "os"
-	"io"
 	"bufio"
+	"io"
 	// "fmt"
 	"errors"
 )
@@ -47,6 +47,10 @@ func NewSwitchingScanner(in io.Reader) *SwitchingScanner {
 // Unlike the standard Scanner implementation, this does not panic if called after scanning has started.
 func (ss *SwitchingScanner) Split(fn bufio.SplitFunc) {
 	ss.splitFunc = fn
+}
+
+func (ss *SwitchingScanner) Scan() bool {
+	return ss.Scanner.Scan()
 }
 
 /*func (ss *SwitchingScanner) Buffer(buf []byte, max int) {
@@ -81,7 +85,7 @@ func (ss *SwitchingScanner) Seek(offset int64, whence int) (int64, error) {
 			advance, token, err := ss.splitFunc(data, atEOF)
 			return advance, token, err
 		})
-		
+
 		return newOffset, err
 	}
 	return 0, errors.New("Unseekable")

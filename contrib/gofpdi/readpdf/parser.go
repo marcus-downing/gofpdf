@@ -55,6 +55,7 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 	parser.reader = reader
 	// parser.pageNumber = 0
 	parser.lastUsedPageBox = DefaultBox
+	parser.resolvedObjects = make(map[ObjectRef]*ObjectDeclaration, 32)
 
 	// read xref data
 	offset, err := parser.reader.FindXrefTable()
@@ -81,7 +82,7 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 	// fmt.Printf("Root: %v\n", parser.root)
 
 	// read pages
-	// pagesRef := 
+	// pagesRef :=
 	// pagesDictionary := parser.resolveObject(PageRef)
 
 	if err := parser.Error(); err != nil {
@@ -93,11 +94,11 @@ func OpenPDFParser(filename string) (*PDFParser, error) {
 // PDFParser is a high-level parser for PDF elements
 // See fpdf_pdf_parser.php
 type PDFParser struct {
-	reader          *PDFTokenReader // the underlying token reader
+	reader *PDFTokenReader // the underlying token reader
 	// pageNumber      int             // the current page number
-	lastUsedPageBox string          // the most recently used page box
+	lastUsedPageBox string // the most recently used page box
 	// pages           []*PDFPageParser       // already loaded pages
-	root            ObjectDeclaration      // the root object
+	root ObjectDeclaration // the root object
 
 	xref struct {
 		maxObject    int                 // the highest xref object number
@@ -106,9 +107,10 @@ type PDFParser struct {
 		trailer      Dictionary          // trailer data
 	}
 
-	currentObject *ObjectDeclaration // the most recently read object
-	warnings      []error    // non-fatal errors encountered during reading
-	err           error      // the first fatal error encountered
+	currentObject   *Dictionary                      // the most recently read object
+	resolvedObjects map[ObjectRef]*ObjectDeclaration // buffer of already parsed objects
+	warnings        []error                          // non-fatal errors encountered during reading
+	err             error                            // the first fatal error encountered
 }
 
 // SetWarning notes a non-fatal parser error
@@ -151,7 +153,7 @@ func (parser *PDFParser) getCatalogObject() *ObjectDeclaration {
 	// return nil
 }
 
-func (parser *PDFParser) getPagesObject() *ObjectDeclaration{
+func (parser *PDFParser) getPagesObject() *ObjectDeclaration {
 	if catalog := parser.getCatalogObject(); catalog != nil {
 		if pagesRef, ok := catalog.Get(PagesRef); ok {
 			return parser.resolveObject(pagesRef)
@@ -184,7 +186,7 @@ func (parser *PDFParser) GetPageParser(number int) *PDFPageParser {
 		if kids, ok := pagesObj.Get(KidsRef); ok && kids != nil {
 			if kidsArray, ok := kids.(Array); ok {
 				if number <= len(kidsArray) {
-					pageRef := kidsArray[number - 1]
+					pageRef := kidsArray[number-1]
 					pageObj := parser.resolveObject(pageRef)
 					if pageObj != nil {
 						page := PDFPageParser{pageObj, parser, number}
@@ -322,6 +324,7 @@ func (parser *PDFParser) readValue() Value {
 		return nil
 	}
 
+	// fmt.Println("readValue: token:", token.String())
 	str := token.String()
 	switch str {
 	case "<":
@@ -396,6 +399,7 @@ func (parser *PDFParser) readValue() Value {
 		return String(buf.Bytes())
 
 	case "stream":
+		// fmt.Println("Reading a stream")
 		// ensure line breaks in front of the stream
 		peek := parser.reader.Peek(32)
 		for _, c := range peek {
@@ -404,23 +408,37 @@ func (parser *PDFParser) readValue() Value {
 			}
 			parser.reader.ReadByte()
 		}
+		// fmt.Println("Current object:", parser.currentObject)
 
-		// TODO get the stream length
+		// get the stream length
 		var length int = 0
-		if lengthObj, ok := parser.currentObject.Get(LengthRef); ok && lengthObj.Type() == TypeObjRef {
-			lengthObj = parser.resolveObject(lengthObj)
-			length = int(lengthObj.ToNumeric().ToInt64()) // lengthObj[1] ???
-		} else {
-			parser.SetError(errors.New("Stream has no length"))
+		if parser.currentObject != nil {
+			// fmt.Println("Current object is not nil")
+
+			if lengthObj, ok := parser.currentObject.Get(LengthRef); ok {
+				// fmt.Println("Length value:", lengthObj)
+				// lengthObj = parser.resolveObject(lengthObj)
+				length = int(lengthObj.ToNumeric().ToInt64()) // lengthObj[1] ???
+			} else {
+				// fmt.Println("No length value")
+				parser.SetError(errors.New("Stream has no length"))
+			}
 		}
-		stream, _ := parser.reader.ReadBytes(length)
+		// fmt.Printf("Stream length: %d\n", length)
+		var bytes []byte
+		if length == 0 {
+			bytes = []byte{}
+		} else {
+			bytes, _ = parser.reader.ReadBytes(length)
+		}
 
 		if endstream := parser.reader.ReadToken(); endstream.Equals(Token("endstream")) {
 			// We don't throw an error here because the next
 			// round trip will start at a new offset
 		}
 
-		return Stream{parser.currentObject.GetDictionary(), stream}
+		// fmt.Println("Stream bytes:", string(bytes))
+		return Stream{parser.currentObject, bytes}
 	}
 
 	// fmt.Println("Parsing token in case it's a number:", str)
@@ -442,11 +460,10 @@ func (parser *PDFParser) readValue() Value {
 				case "obj":
 					parser.reader.ReadTokens(2)
 					objectRef := ObjectRef{number, number2}
-					// fmt.Println("Reading values for object:", objectRef)
-					values := make([]Value, 0, 2) // ???
-					// dictionary := parser.readValue()
-					// values := Dictionary{}
+					fmt.Println("Reading values for object:", objectRef)
+					values := make([]Value, 0, 2) // most objects only have 1 or 2 values
 					for i := 1; i < 10; i++ {
+						// fmt.Println("dictionary: next value:", string(parser.reader.Peek(100)))
 						value := parser.readValue()
 						// fmt.Println("Value:", value)
 						if value == nil {
@@ -454,6 +471,10 @@ func (parser *PDFParser) readValue() Value {
 						}
 						if tokenValue, ok := value.(Token); ok && tokenValue.String() == "endobj" {
 							break
+						}
+						if value.Type() == TypeDictionary {
+							d := value.(Dictionary)
+							parser.currentObject = &d
 						}
 						values = append(values, value)
 					}
@@ -493,6 +514,11 @@ func (parser *PDFParser) resolveObject(spec Value) *ObjectDeclaration {
 	}
 
 	if objRef, ok := spec.(ObjectRef); ok {
+		// Have we done this one already?
+		if obj, ok := parser.resolvedObjects[objRef]; ok {
+			return obj
+		}
+
 		// This is a reference, resolve it
 		if offset, ok := parser.xref.xref[objRef]; ok {
 			// fmt.Println("Resolve ref at offset:", offset)
@@ -501,48 +527,49 @@ func (parser *PDFParser) resolveObject(spec Value) *ObjectDeclaration {
 			obj := parser.readValue()
 			// fmt.Println("Reader object value:", obj)
 			if objDecl, ok := obj.(ObjectDeclaration); ok {
+				parser.resolvedObjects[objRef] = &objDecl
 				return &objDecl
 			}
 
 			// so it isn't an object declaration? now what?
 
 			/*
-			if header != objRef {
-				toSearchFor := Token(fmt.Sprintf("%d %d obj", objRef.Obj, objRef.Gen))
-				if parser.reader.SkipToToken(toSearchFor) {
-					parser.reader.SkipBytes(len(toSearchFor))
+				if header != objRef {
+					toSearchFor := Token(fmt.Sprintf("%d %d obj", objRef.Obj, objRef.Gen))
+					if parser.reader.SkipToToken(toSearchFor) {
+						parser.reader.SkipBytes(len(toSearchFor))
+					} else {
+						// Unable to find object
+						return nil
+					}
+				}
+
+				if headerRef, ok := header.(ObjectRef); ok {
+					// If we're being asked to store all the information
+					// about the object, we add the object ID and generation
+					// number for later use
+					result := ObjectDeclaration{headerRef, make([]Value, 0, 2)}
+					parser.currentObject = &result
+
+					// Now simply read the object data until
+					// we encounter an end-of-object marker
+					for {
+						value := parser.readValue()
+						if value == nil || len(result.Values) > 1 { // ???
+							// in this case the parser couldn't find an "endobj" so we break here
+							break
+						}
+
+						if value.Equals(Token("endobj")) {
+							break
+						}
+
+						result.Values = append(result.Values, value)
+					}
 				} else {
-					// Unable to find object
-					return nil
+					// ?
 				}
-			}
-
-			if headerRef, ok := header.(ObjectRef); ok {
-				// If we're being asked to store all the information
-				// about the object, we add the object ID and generation
-				// number for later use
-				result := ObjectDeclaration{headerRef, make([]Value, 0, 2)}
-				parser.currentObject = &result
-
-				// Now simply read the object data until
-				// we encounter an end-of-object marker
-				for {
-					value := parser.readValue()
-					if value == nil || len(result.Values) > 1 { // ???
-						// in this case the parser couldn't find an "endobj" so we break here
-						break
-					}
-
-					if value.Equals(Token("endobj")) {
-						break
-					}
-
-					result.Values = append(result.Values, value)
-				}
-			} else {
-				// ?
-			}
-*/
+			*/
 			// Reset to the start
 			// parser.reader.Seek(???)
 
@@ -552,6 +579,7 @@ func (parser *PDFParser) resolveObject(spec Value) *ObjectDeclaration {
 		}
 	}
 
+	// we were actually just given an object declaration, so give it straight back
 	if obj, ok := spec.(ObjectDeclaration); ok {
 		return &obj
 	}
@@ -563,7 +591,7 @@ func (parser *PDFParser) resolveObject(spec Value) *ObjectDeclaration {
 
 func (parser *PDFParser) unfilterStream(s Stream) Stream {
 	filters := make([]StreamFilter, 8)
-	if filter, ok := s.Parameters[FilterRef]; ok {
+	if filter, ok := s.Get(FilterRef); ok {
 		if objRef, ok := filter.(ObjectRef); ok {
 			filter = parser.resolveObject(objRef)
 		}

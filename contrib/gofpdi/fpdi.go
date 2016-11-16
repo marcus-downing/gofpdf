@@ -20,11 +20,11 @@ package gofpdi
 import (
 	"fmt"
 	// "math"
- 	"errors"
+	"errors"
 	// "strconv"
 	"github.com/jung-kurt/gofpdf"
-	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
 	"github.com/jung-kurt/gofpdf/contrib/gofpdi/readpdf"
+	. "github.com/jung-kurt/gofpdf/contrib/gofpdi/types"
 )
 
 // Open makes an existing PDF file usable for templates
@@ -37,7 +37,7 @@ func Open(filename string) (*Fpdi, error) {
 	fpdi := new(Fpdi)
 	fpdi.parser = parser
 	fpdi.pdfVersion = fpdi.parser.GetPDFVersion()
-
+	fpdi.k = 1.0
 	fpdi.numPages = parser.CountPages()
 	fmt.Println("Num pages:", fpdi.numPages)
 	// td.k = ???
@@ -48,11 +48,11 @@ func Open(filename string) (*Fpdi, error) {
 
 // Fpdi represents a PDF file parser which can load templates to use in other documents
 type Fpdi struct {
-	numPages        int        // the number of pages in the PDF cocument
-	lastUsedPageBox string     // the most recently used value of boxName
+	numPages        int                // the number of pages in the PDF cocument
+	lastUsedPageBox string             // the most recently used value of boxName
 	parser          *readpdf.PDFParser // the actual document reader
-	pdfVersion      string     // the PDF version
-	k               float64    // default scale factor (number of points in user unit)
+	pdfVersion      string             // the PDF version
+	k               float64            // default scale factor (number of points in user unit)
 }
 
 // Error returns the internal parser error; this will be nil if no error has occurred.
@@ -73,6 +73,7 @@ func (fpdi *Fpdi) Page(pageNumber int) gofpdf.Template {
 // ImportPage imports a single page of the source document to use as a template in another document
 func (fpdi *Fpdi) ImportPage(pageNumber int, boxName string, groupXObject bool) gofpdf.Template {
 	if pageNumber > fpdi.numPages {
+		fmt.Println("Page", pageNumber, "does not exist")
 		fpdi.parser.SetError(errors.New("Page does not exist"))
 		return nil
 	}
@@ -86,11 +87,21 @@ func (fpdi *Fpdi) ImportPage(pageNumber int, boxName string, groupXObject bool) 
 	t.id = gofpdf.GenerateTemplateID()
 
 	pageBoxes := page.GetPageBoxes(fpdi.k)
+	// fmt.Println("Page boxes:", pageBoxes)
 	pageBox := pageBoxes.Get(boxName)
 	t.pageSize = pageBox.SizeType
+	// fmt.Println("FPDI: Template size:", t.pageSize)
 	fpdi.lastUsedPageBox = pageBoxes.LastUsedPageBox
 
+	// get the actual page bytes verbatim
 	t.bytes = page.Bytes()
+	// fmt.Println("FPDI: Template bytes:", string(t.bytes))
+
+	// load the fonts used on this page
+	// these will be resolved by the template system
+	t.fonts = page.Fonts()
+	fmt.Println("FPDI: Template fonts:", t.fonts)
+
 	t.images = page.Images()
 	t.templates = page.Templates()
 

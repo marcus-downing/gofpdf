@@ -70,6 +70,11 @@ func (t *FpdfTpl) Bytes() []byte {
 	return t.bytes
 }
 
+// Fonts get sideloaded by an actual template, so this returns nothing
+func (t *FpdfTpl) Fonts() map[string]FontDefType {
+	return nil
+}
+
 // Images returns a list of the images used in this template
 func (t *FpdfTpl) Images() map[string]*ImageInfoType {
 	return t.images

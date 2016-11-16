@@ -199,13 +199,13 @@ type Fpdf struct {
 	fontpath         string                    // path containing fonts
 	fontLoader       FontLoader                // used to load font files from arbitrary locations
 	coreFonts        map[string]bool           // array of core font names
-	fonts            map[string]fontDefType    // array of used fonts
+	fonts            map[string]FontDefType    // array of used fonts
 	fontFiles        map[string]fontFileType   // array of font files
 	diffs            []string                  // array of encoding differences
 	fontFamily       string                    // current font family
 	fontStyle        string                    // current font style
 	underline        bool                      // underlining flag
-	currentFont      fontDefType               // current font info
+	currentFont      FontDefType               // current font info
 	fontSizePt       float64                   // current font size in points
 	fontSize         float64                   // current font size in user unit
 	ws               float64                   // word spacing
@@ -346,7 +346,7 @@ type FontDescType struct {
 	MissingWidth int
 }
 
-type fontDefType struct {
+type FontDefType struct {
 	Tp           string       // "Core", "TrueType", ...
 	Name         string       // "Courier-Bold", ...
 	Desc         FontDescType // Font descriptor
